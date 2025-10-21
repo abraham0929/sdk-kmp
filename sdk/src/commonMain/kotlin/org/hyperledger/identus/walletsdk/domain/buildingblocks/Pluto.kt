@@ -3,6 +3,7 @@ package org.hyperledger.identus.walletsdk.domain.buildingblocks
 import kotlinx.coroutines.flow.Flow
 import org.hyperledger.identus.walletsdk.domain.models.DID
 import org.hyperledger.identus.walletsdk.domain.models.DIDPair
+import org.hyperledger.identus.walletsdk.domain.models.DIDState
 import org.hyperledger.identus.walletsdk.domain.models.Mediator
 import org.hyperledger.identus.walletsdk.domain.models.Message
 import org.hyperledger.identus.walletsdk.domain.models.PeerDID
@@ -34,6 +35,13 @@ interface Pluto {
         alias: String?,
         privateKeys: List<StorableKey>
     )
+
+    /**
+     * 更新DID的发布状态
+     * @param did 目标DID
+     * @param state 新状态（PUBLISHED/UNPUBLISHED）
+     */
+    fun updatePrismDIDState(did: DID,state: DIDState);
 
     /**
      * Stores the PeerDID in the system.

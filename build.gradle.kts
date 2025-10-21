@@ -5,11 +5,11 @@ val os: OperatingSystem = OperatingSystem.current()
 
 plugins {
     id("com.android.library") version "8.1.4" apply false
-    kotlin("jvm") version "1.9.24"
-    kotlin("plugin.serialization") version "1.8.20"
+    kotlin("jvm") version "2.1.0"
+    kotlin("plugin.serialization") version "2.1.0"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
     id("org.jetbrains.dokka") version "1.9.20"
-    id("org.jetbrains.kotlin.kapt") version "1.9.10"
+    id("org.jetbrains.kotlin.kapt") version "2.1.0"
     id("io.github.gradle-nexus.publish-plugin") version "2.0.0"
 }
 
@@ -21,7 +21,8 @@ buildscript {
         gradlePluginPortal()
     }
     dependencies {
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+//        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
         classpath("com.google.protobuf:protobuf-gradle-plugin:0.9.1")
         classpath("com.squareup.sqldelight:gradle-plugin:1.5.5")
         classpath("org.jetbrains.kotlinx:atomicfu-gradle-plugin:0.23.1")
@@ -30,7 +31,7 @@ buildscript {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(11))
+        languageVersion.set(JavaLanguageVersion.of(17))
     }
 }
 
@@ -47,16 +48,23 @@ allprojects {
             url = uri("https://maven.pkg.jetbrains.space/public/p/kotlinx-coroutines/maven")
         }
         maven {
-            setUrl("https://maven.pkg.github.com/hyperledger/aries-uniffi-wrappers")
+//            setUrl("https://maven.pkg.github.com/hyperledger/aries-uniffi-wrappers")
+//            credentials {
+//                username = System.getenv("GITHUB_ACTOR")
+//                password = System.getenv("GITHUB_TOKEN")
+//            }
+            setUrl("https://maven.pkg.github.com/LF-Decentralized-Trust-labs/aries-uniffi-wrappers")
             credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
+                username = "abraham0929"
+                password = "xxxxxx"
             }
         }
     }
 
     configurations.all {
         resolutionStrategy {
+            // Force JNA to specific version to avoid conflicts
+            force("net.java.dev.jna:jna:5.17.0")
             eachDependency {
                 if (requested.group == "org.bouncycastle") {
                     when (requested.name) {
@@ -71,6 +79,19 @@ allprojects {
                     // Because of Duplicate Classes issue happening on the sampleapp module
                     if (requested.name == "protobuf-javalite" || requested.name == "protobuf-java") {
                         useTarget("com.google.protobuf:protobuf-java:3.14.0")
+                    }
+                } else if (requested.group == "net.java.dev.jna") {
+                    // Force JNA to use the latest version and ensure it's resolved as JAR, not AAR
+                    useTarget("net.java.dev.jna:jna:5.17.0")
+                } else if (requested.group == "org.jetbrains.kotlin") {
+                    // Force consistent Kotlin version to avoid compatibility issues
+                    if (requested.name.startsWith("kotlin-stdlib")) {
+                        useTarget("org.jetbrains.kotlin:${requested.name}:2.1.0")
+                    }
+                } else if (requested.group == "org.jetbrains.kotlinx") {
+                    // Force compatible kotlinx-serialization version with Kotlin 2.1.0
+                    if (requested.name.startsWith("kotlinx-serialization")) {
+                        useTarget("org.jetbrains.kotlinx:${requested.name}:1.6.3")
                     }
                 }
             }

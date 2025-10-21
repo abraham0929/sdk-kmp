@@ -4,11 +4,13 @@ CREATE TABLE DID (
     methodId TEXT NOT NULL ,
     schema TEXT NOT NULL ,
     alias TEXT,
+    -- 新增状态字段，存储枚举字符串（如"PUBLISHED"、"UNPUBLISHED"）
+    state TEXT NOT NULL DEFAULT 'UNPUBLISHED',
     PRIMARY KEY (did)
 );
 
 insert:
-INSERT OR IGNORE INTO DID(did, method, methodId, schema, alias)
+INSERT OR IGNORE INTO DID(did, method, methodId, schema, alias, state)
 VALUES ?;
 
 fetchAllPrismDID:
@@ -47,3 +49,8 @@ WHERE methodId = ?;
 fetchAllDIDs:
 SELECT *
 FROM DID;
+
+updateState:
+UPDATE DID
+SET state = ?
+WHERE did = ?;
