@@ -51,6 +51,7 @@ import org.hyperledger.identus.walletsdk.apollo.utils.Secp256k1KeyPair
 import org.hyperledger.identus.walletsdk.apollo.utils.Secp256k1PrivateKey
 import org.hyperledger.identus.walletsdk.apollo.utils.X25519KeyPair
 import org.hyperledger.identus.walletsdk.apollo.utils.X25519PrivateKey
+import org.hyperledger.identus.walletsdk.castor.resolvers.PrismDIDApiResolver
 import org.hyperledger.identus.walletsdk.domain.DIDCOMM_MESSAGING
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Apollo
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Castor
@@ -376,6 +377,8 @@ open class EdgeAgent {
         registerPrismDID(did, index, alias, keyPair.privateKey)
         return did
     }
+
+
 
     /**
      * This function receives a Prism DID and its information and stores it into the local database.

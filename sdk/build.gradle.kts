@@ -198,7 +198,9 @@ kotlin {
 
                 implementation("io.iohk.atala.prism.didcomm:didpeer:$didpeerVersion")
 
-                implementation("org.hyperledger.identus.apollo:apollo:$apolloVersion")
+                implementation("org.hyperledger.identus.apollo:apollo:$apolloVersion") {
+                    exclude(group = "net.java.dev.jna", module = "jna")
+                }
 
                 implementation("org.kotlincrypto.hash:sha2:0.4.0")
 
@@ -216,7 +218,10 @@ kotlin {
 
                 api("org.lighthousegames:logging:1.1.2")
 
-                implementation("org.hyperledger:anoncreds_uniffi:0.2.0-wrapper.1")
+                implementation("org.hyperledger:anoncreds_uniffi:0.3.0-wrapper.0") {
+                    // Exclude JNA from all targets - we'll add it back selectively
+                    exclude(group = "net.java.dev.jna", module = "jna")
+                }
                 implementation("com.ionspin.kotlin:bignum:0.3.9")
                 implementation("org.bouncycastle:bcprov-jdk15on:1.68")
                 implementation("eu.europa.ec.eudi:eudi-lib-jvm-sdjwt-kt:0.4.0") {
@@ -245,6 +250,8 @@ kotlin {
                 implementation("io.ktor:ktor-client-okhttp:2.3.11")
                 implementation("io.ktor:ktor-client-java:2.3.11")
                 implementation("app.cash.sqldelight:sqlite-driver:2.0.1")
+                // Add JNA for JVM target where it's needed
+                implementation("net.java.dev.jna:jna:5.17.0")
             }
         }
         val jvmTest by getting
@@ -254,6 +261,7 @@ kotlin {
                 implementation("io.ktor:ktor-client-okhttp:2.3.11")
                 implementation("io.ktor:ktor-client-android:2.3.11")
                 implementation("app.cash.sqldelight:android-driver:2.0.1")
+                // Do NOT add JNA for Android - it's only needed for JVM
             }
         }
         val androidInstrumentedTest by getting {
@@ -307,6 +315,12 @@ android {
         resources {
             merges += "**/**.proto"
         }
+    }
+}
+// Add explicit configuration to handle JNA dependency issues
+configurations.all {
+    if (name.contains("android", ignoreCase = true)) {
+        exclude(group = "net.java.dev.jna", module = "jna")
     }
 }
 

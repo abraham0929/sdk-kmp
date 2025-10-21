@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.devtools.ksp") version "1.9.24-1.0.20"
+    id("com.google.devtools.ksp") version "2.1.0-1.0.29"
 }
 
 apply(plugin = "kotlinx-atomicfu")
@@ -24,6 +24,9 @@ android {
         resources {
             merges += "**/**.proto"
             excludes.addAll(listOf("META-INF/**/**", "META-INF/*/**"))
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 
@@ -48,6 +51,25 @@ android {
         jvmTarget = "17"
     }
     buildToolsVersion = "34.0.0"
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("net.java.dev.jna:jna:5.17.0")
+
+        dependencySubstitution {
+            substitute(module("net.java.dev.jna:jna"))
+                .using(module("net.java.dev.jna:jna:5.17.0"))
+                .because("Force specific version and avoid AAR resolution")
+        }
+    }
+
+    // Exclude JNA from databinding transformations
+    if (name.contains("debugRuntimeClasspath") || name.contains("releaseRuntimeClasspath")) {
+        attributes {
+            attribute(Attribute.of("artifactType", String::class.java), "jar")
+        }
+    }
 }
 
 dependencies {

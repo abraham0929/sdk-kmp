@@ -2,12 +2,15 @@
 
 import com.google.protobuf.gradle.*
 import org.gradle.internal.os.OperatingSystem
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
 
 val os: OperatingSystem = OperatingSystem.current()
 
 plugins {
     `java-library`
     id("com.google.protobuf")
+    kotlin("jvm") version "2.1.0"
 }
 
 // Mock configuration which derives compile only.
@@ -19,6 +22,15 @@ val jarPathConf: Configuration by configurations.creating {
 dependencies {
     // This is needed for includes, ref: https://github.com/google/protobuf-gradle-plugin/issues/41#issuecomment-143884188
     compileOnly("com.google.protobuf:protobuf-java:3.14.0")
+    implementation(kotlin("stdlib-jdk8"))
+    implementation("pro.streem.pbandk:pbandk-runtime:0.14.2") // 添加正确的 pbandk 运行时依赖
+}
+
+// Use Java toolchain configuration
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
 
 sourceSets {
@@ -74,4 +86,7 @@ tasks {
     compileJava {
         enabled = false
     }
+}
+repositories {
+    mavenCentral()
 }
