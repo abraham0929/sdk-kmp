@@ -193,6 +193,7 @@ class BackupRestorationTests {
             pluto,
             MercuryMock(),
             PolluxImpl(apollo, castor),
+            null,
             seed,
             null,
             MediationHandlerMock()
@@ -468,6 +469,7 @@ class BackupRestorationTests {
             realPluto,
             MercuryMock(),
             PolluxImpl(apollo, castor),
+            null,
             seed,
             null,
             MediationHandlerMock()
@@ -588,6 +590,7 @@ class BackupRestorationTests {
             realPluto,
             MercuryMock(),
             PolluxImpl(apollo, castor),
+            null,
             seed,
             null,
             MediationHandlerMock()

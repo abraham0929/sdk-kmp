@@ -7,9 +7,13 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.Url
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import org.hyperledger.identus.walletsdk.SdkPlutoDb
 import org.hyperledger.identus.walletsdk.apollo.ApolloImpl
 import org.hyperledger.identus.walletsdk.castor.CastorImpl
@@ -18,19 +22,20 @@ import org.hyperledger.identus.walletsdk.domain.buildingblocks.Castor
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Mercury
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Pluto
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Pollux
+import org.hyperledger.identus.walletsdk.domain.models.Api
 import org.hyperledger.identus.walletsdk.domain.models.ApiImpl
 import org.hyperledger.identus.walletsdk.domain.models.DID
 import org.hyperledger.identus.walletsdk.domain.models.Seed
 import org.hyperledger.identus.walletsdk.domain.models.httpClient
 import org.hyperledger.identus.walletsdk.edgeagent.EdgeAgent
 import org.hyperledger.identus.walletsdk.edgeagent.EdgeAgentError
+import org.hyperledger.identus.walletsdk.edgeagent.helpers.PublishPrismHandler
 import org.hyperledger.identus.walletsdk.edgeagent.mediation.BasicMediatorHandler
 import org.hyperledger.identus.walletsdk.edgeagent.mediation.MediationHandler
 import org.hyperledger.identus.walletsdk.mercury.MercuryImpl
 import org.hyperledger.identus.walletsdk.mercury.resolvers.DIDCommWrapper
 import org.hyperledger.identus.walletsdk.pluto.PlutoImpl
 import org.hyperledger.identus.walletsdk.pluto.data.DbConnection
-import org.hyperledger.identus.walletsdk.pluto.data.DbConnectionImpl
 import org.hyperledger.identus.walletsdk.pollux.PolluxImpl
 import java.net.UnknownHostException
 import java.util.Base64
@@ -40,18 +45,23 @@ class Sdk {
     private val castor: Castor = createCastor()
     private var pollux: Pollux = createPollux()
     private val seed: Seed = createSeed()
+
+    private val api: Api = createApi()
+
     private val agentStatusStream: MutableLiveData<EdgeAgent.State> = MutableLiveData()
 
     val pluto: Pluto = createPluto()
     val mercury: Mercury = createMercury()
 
     lateinit var handler: MediationHandler
+    lateinit var publishPrismHandler: PublishPrismHandler
     lateinit var agent: EdgeAgent
 
     @Throws(EdgeAgentError.MediationRequestFailedError::class, UnknownHostException::class)
     suspend fun startAgent(mediatorDID: String, context: Application) {
         handler = createHandler(mediatorDID)
-        agent = createAgent(handler)
+        publishPrismHandler = createPublisher(api, Url("http://localhost:9083/cloud-agent"))
+        agent = createAgent(handler, publishPrismHandler)
 
         CoroutineScope(Dispatchers.Default).launch {
             agent.flowState.collect {
@@ -68,9 +78,10 @@ class Sdk {
         agentStatusStream.postValue(EdgeAgent.State.RUNNING)
     }
 
-    suspend fun startAgentForBackup(context: Application) {
+    suspend fun startAgentForBackup(context: Application?) {
         handler = createHandler("did:prism:asldkfjalsdf")
-        agent = createAgent(handler)
+        publishPrismHandler = createPublisher(api, Url("http://localhost:9083/cloud-agent"))
+        agent = createAgent(handler, publishPrismHandler)
 
         CoroutineScope(Dispatchers.Default).launch {
             agent.flowState.collect {
@@ -81,7 +92,7 @@ class Sdk {
         agentStatusStream.postValue(EdgeAgent.State.RUNNING)
     }
 
-    suspend fun startPluto(context: Application) {
+    suspend fun startPluto(context: Application?) {
         (pluto as PlutoImpl).start(context)
     }
 
@@ -107,7 +118,8 @@ class Sdk {
                 return driver
             }
         }
-        return PlutoImpl(DbConnectionImpl())
+//        return PlutoImpl(DbConnectionImpl())
+        return PlutoImpl(customDbConnection)
     }
 
     private fun createApollo(): Apollo {
@@ -170,13 +182,34 @@ class Sdk {
         )
     }
 
-    private fun createAgent(handler: MediationHandler): EdgeAgent {
+    private fun createApi(): Api {
+        return ApiImpl(
+            httpClient {
+                install(ContentNegotiation) {
+                    json(
+                        Json {
+                            ignoreUnknownKeys = true
+                            prettyPrint = true
+                            isLenient = true
+                        }
+                    )
+                }
+            }
+        )
+    }
+
+    private fun createPublisher(api: Api, cloudagentUrl: Url): PublishPrismHandler {
+        return PublishPrismHandler(api, cloudagentUrl.toString())
+    }
+
+    private fun createAgent(handler: MediationHandler, publisher: PublishPrismHandler): EdgeAgent {
         return EdgeAgent(
             apollo = apollo,
             castor = castor,
             pluto = pluto,
             mercury = mercury,
             pollux = pollux,
+            publishPrismHandler = publisher,
             seed = seed,
             mediatorHandler = handler,
         )

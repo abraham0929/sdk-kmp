@@ -152,4 +152,13 @@ sealed class EdgeAgentError : KnownPrismError() {
         override val message: String
             get() = "This invitation has expired."
     }
+
+    // 在EdgeAgentError类中添加PublishPrismError内部类
+    class PublishPrismError(private val errorMessage: String) : EdgeAgentError() {
+        override val code: Int
+            get() = 616
+
+        override val message: String
+            get() = errorMessage
+    }
 }

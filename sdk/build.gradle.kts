@@ -393,6 +393,11 @@ afterEvaluate {
     tasks.getByName("runKtlintCheckOverCommonMainSourceSet") {
         dependsOn(buildProtoLibsGen)
     }
+    // 添加这一行，让runKtlintFormatOverCommonMainSourceSet任务也依赖于buildProtoLibsGen
+    tasks.getByName("runKtlintFormatOverCommonMainSourceSet") {
+        dependsOn(buildProtoLibsGen)
+    }
+
     tasks.getByName("build") {
         dependsOn(buildProtoLibsGen)
     }

@@ -24,7 +24,6 @@ import org.hyperledger.identus.walletsdk.apollo.utils.X25519PrivateKey
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Pluto
 import org.hyperledger.identus.walletsdk.domain.models.DID
 import org.hyperledger.identus.walletsdk.domain.models.DIDPair
-import org.hyperledger.identus.walletsdk.domain.models.DIDState
 import org.hyperledger.identus.walletsdk.domain.models.Mediator
 import org.hyperledger.identus.walletsdk.domain.models.Message
 import org.hyperledger.identus.walletsdk.domain.models.PeerDID
@@ -189,24 +188,12 @@ class PlutoImpl(
                 did.method,
                 did.methodId,
                 did.schema,
-                alias,
-                DIDState.UNPUBLISHED.name
-
+                alias
             )
         )
         privateKeys.forEach { privateKey ->
             storePrivateKeys(privateKey, did, keyPathIndex)
         }
-    }
-
-    /**
-     * 更新DID的发布状态到数据库
-     */
-    override fun updatePrismDIDState(did: DID, state: DIDState) {
-        getInstance().dIDQueries.updateState(
-            state = state.name,  // 存储枚举名称字符串
-            did = did.toString()  // 匹配DID主键
-        )
     }
 
     /**
@@ -221,9 +208,7 @@ class PlutoImpl(
                 did.method,
                 did.methodId,
                 did.schema,
-                did.alias,
-                DIDState.UNPUBLISHED.name
-
+                did.alias
             )
         )
     }
@@ -338,8 +323,7 @@ class PlutoImpl(
                 mediator.method,
                 mediator.methodId,
                 mediator.schema,
-                null,
-                DIDState.UNPUBLISHED.name
+                null
             )
         )
         instance.dIDQueries.insert(
@@ -348,9 +332,7 @@ class PlutoImpl(
                 routing.method,
                 routing.methodId,
                 routing.schema,
-                null,
-                DIDState.UNPUBLISHED.name
-
+                null
             )
         )
         instance.mediatorQueries.insert(

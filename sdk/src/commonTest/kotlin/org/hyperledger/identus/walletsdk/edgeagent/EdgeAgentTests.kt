@@ -7,9 +7,6 @@ import com.nimbusds.jose.EncryptionMethod
 import com.nimbusds.jose.JWEAlgorithm
 import com.nimbusds.jose.JWEObject
 import io.ktor.http.HttpStatusCode
-import java.security.interfaces.ECPublicKey
-import java.util.*
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.Serializable
@@ -67,6 +64,7 @@ import org.hyperledger.identus.walletsdk.domain.models.keyManagement.SeedKey
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.StorablePrivateKey
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.TypeKey
 import org.hyperledger.identus.walletsdk.edgeagent.helpers.AgentOptions
+import org.hyperledger.identus.walletsdk.edgeagent.helpers.PublishPrismHandler
 import org.hyperledger.identus.walletsdk.edgeagent.mediation.MediationHandler
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.ProtocolType
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.issueCredential.IssueCredential
@@ -103,6 +101,9 @@ import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.spy
+import java.security.interfaces.ECPublicKey
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -127,6 +128,8 @@ class EdgeAgentTests {
 
     @Mock
     lateinit var castorMock: Castor
+
+    lateinit var publishPrismHandlerMock: PublishPrismHandler
 
     @Mock
     lateinit var connectionManagerMock: ConnectionManager
@@ -189,6 +192,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManager,
                 seed = null,
                 api = null,
@@ -231,6 +235,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManager,
                 seed = null,
                 api = null,
@@ -265,6 +270,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMockOld,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = null,
@@ -285,6 +291,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = null,
                 api = null,
@@ -307,6 +314,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = null,
                 api = null,
@@ -330,6 +338,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = null,
                 api = null,
@@ -355,6 +364,7 @@ class EdgeAgentTests {
             pluto = plutoMockOld,
             mercury = mercuryMockOld,
             pollux = polluxMockOld,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = seed,
             api = null,
@@ -378,6 +388,7 @@ class EdgeAgentTests {
                 plutoMock,
                 mercuryMockOld,
                 polluxMock,
+                null,
                 connectionManagerMock,
                 seed,
                 null,
@@ -404,6 +415,7 @@ class EdgeAgentTests {
             plutoMockOld,
             mercuryMockOld,
             polluxMockOld,
+            null,
             connectionManagerOld,
             null,
             null,
@@ -440,6 +452,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerOld,
                 seed = null,
                 api = ApiMock(HttpStatusCode.OK, "{\"success\":\"true\"}"),
@@ -467,6 +480,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerOld,
                 seed = null,
                 api = api,
@@ -494,6 +508,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerOld,
                 seed = null,
                 api = ApiMock(HttpStatusCode.OK, "{\"success\":\"true\"}"),
@@ -520,6 +535,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerOld,
                 seed = null,
                 api = null,
@@ -546,6 +562,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMockOld,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = null,
@@ -589,6 +606,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMockOld,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = null,
@@ -631,6 +649,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMockOld,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = null,
@@ -672,6 +691,7 @@ class EdgeAgentTests {
             pluto = plutoMockOld,
             mercury = mercuryMockOld,
             pollux = polluxMockOld,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = null,
             api = null,
@@ -719,6 +739,7 @@ class EdgeAgentTests {
                 pluto = plutoMockOld,
                 mercury = mercuryMockOld,
                 pollux = polluxMockOld,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerOld,
                 seed = null,
                 api = null,
@@ -749,6 +770,7 @@ class EdgeAgentTests {
             pluto = plutoMockOld,
             mercury = mercuryMockOld,
             pollux = polluxMockOld,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = null,
             api = null,
@@ -768,6 +790,7 @@ class EdgeAgentTests {
             pluto = plutoMockOld,
             mercury = mercuryMockOld,
             pollux = polluxMockOld,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = null,
             api = null,
@@ -788,6 +811,7 @@ class EdgeAgentTests {
             pluto = plutoMockOld,
             mercury = mercuryMockOld,
             pollux = polluxMockOld,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = null,
             api = null,
@@ -850,6 +874,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMockOld,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = seed,
             api = ApiMock(HttpStatusCode.OK, "{\"success\":\"true\"}"),
@@ -892,6 +917,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMockOld,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = seed,
             api = ApiMock(HttpStatusCode.OK, "{\"success\":\"true\"}"),
@@ -920,6 +946,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMockOld,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = seed,
             api = ApiMock(HttpStatusCode.OK, "{\"success\":\"true\"}"),
@@ -966,6 +993,7 @@ class EdgeAgentTests {
             pluto = plutoMockOld,
             mercury = mercuryMockOld,
             pollux = pollux,
+            publishPrismHandler = null,
             connectionManager = connectionManagerOld,
             seed = null,
             api = ApiMock(HttpStatusCode.OK, "{\"success\":\"true\"}"),
@@ -1040,6 +1068,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMock,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = apiMock,
@@ -1138,6 +1167,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMock,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = apiMock,
@@ -1256,6 +1286,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMock,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = apiMock,
@@ -1296,6 +1327,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMockOld,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = apiMock,
@@ -1368,6 +1400,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMock,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = apiMock,
@@ -1422,6 +1455,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMockOld,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = apiMock,
@@ -1531,6 +1565,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMock,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = apiMock,
@@ -1654,6 +1689,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMock,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = apiMock,
@@ -1675,6 +1711,7 @@ class EdgeAgentTests {
             pluto = plutoMock,
             mercury = mercuryMock,
             pollux = polluxMock,
+            publishPrismHandler = null,
             connectionManager = connectionManagerMock,
             seed = seed,
             api = null,
@@ -1869,6 +1906,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMock,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = null,
@@ -1892,6 +1930,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMock,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = null,
@@ -1929,6 +1968,7 @@ class EdgeAgentTests {
                 pluto = plutoMock,
                 mercury = mercuryMock,
                 pollux = polluxMock,
+                publishPrismHandler = null,
                 connectionManager = connectionManagerMock,
                 seed = seed,
                 api = null,

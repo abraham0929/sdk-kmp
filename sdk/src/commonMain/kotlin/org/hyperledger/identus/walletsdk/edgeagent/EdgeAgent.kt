@@ -23,9 +23,6 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.Url
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.util.date.getTimeMillis
-import java.net.UnknownHostException
-import java.security.SecureRandom
-import java.util.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -51,7 +48,6 @@ import org.hyperledger.identus.walletsdk.apollo.utils.Secp256k1KeyPair
 import org.hyperledger.identus.walletsdk.apollo.utils.Secp256k1PrivateKey
 import org.hyperledger.identus.walletsdk.apollo.utils.X25519KeyPair
 import org.hyperledger.identus.walletsdk.apollo.utils.X25519PrivateKey
-import org.hyperledger.identus.walletsdk.castor.resolvers.PrismDIDApiResolver
 import org.hyperledger.identus.walletsdk.domain.DIDCOMM_MESSAGING
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Apollo
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Castor
@@ -63,7 +59,6 @@ import org.hyperledger.identus.walletsdk.domain.models.ApiImpl
 import org.hyperledger.identus.walletsdk.domain.models.ApolloError
 import org.hyperledger.identus.walletsdk.domain.models.AttachmentData
 import org.hyperledger.identus.walletsdk.domain.models.AttachmentData.AttachmentBase64
-
 import org.hyperledger.identus.walletsdk.domain.models.AttachmentDescriptor
 import org.hyperledger.identus.walletsdk.domain.models.Credential
 import org.hyperledger.identus.walletsdk.domain.models.CredentialOperationsOptions
@@ -93,6 +88,7 @@ import org.hyperledger.identus.walletsdk.domain.models.keyManagement.StorableKey
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.StorablePrivateKey
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.TypeKey
 import org.hyperledger.identus.walletsdk.edgeagent.helpers.AgentOptions
+import org.hyperledger.identus.walletsdk.edgeagent.helpers.PublishPrismHandler
 import org.hyperledger.identus.walletsdk.edgeagent.mediation.BasicMediatorHandler
 import org.hyperledger.identus.walletsdk.edgeagent.mediation.MediationHandler
 import org.hyperledger.identus.walletsdk.edgeagent.models.ConnectionlessMessageData
@@ -115,9 +111,9 @@ import org.hyperledger.identus.walletsdk.edgeagent.protocols.proofOfPresentation
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.proofOfPresentation.PresentationSubmissionOptionsJWT
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.proofOfPresentation.RequestPresentation
 import org.hyperledger.identus.walletsdk.logger.LogComponent
-import org.hyperledger.identus.walletsdk.logger.Metadata
 import org.hyperledger.identus.walletsdk.logger.Logger
 import org.hyperledger.identus.walletsdk.logger.LoggerImpl
+import org.hyperledger.identus.walletsdk.logger.Metadata
 import org.hyperledger.identus.walletsdk.pluto.PlutoBackupTask
 import org.hyperledger.identus.walletsdk.pluto.PlutoRestoreTask
 import org.hyperledger.identus.walletsdk.pluto.models.backup.BackupV0_0_1
@@ -125,6 +121,9 @@ import org.hyperledger.identus.walletsdk.pollux.models.AnoncredsPresentationDefi
 import org.hyperledger.identus.walletsdk.pollux.models.CredentialRequestMeta
 import org.hyperledger.identus.walletsdk.pollux.models.JWTPresentationDefinitionRequest
 import org.kotlincrypto.hash.sha2.SHA256
+import java.net.UnknownHostException
+import java.security.SecureRandom
+import java.util.UUID
 
 /**
  * Check if the passed URL is valid or not.
@@ -159,6 +158,7 @@ open class EdgeAgent {
     val pollux: Pollux
     val flowState = MutableSharedFlow<State>()
 
+    lateinit var publishPrismHandler: PublishPrismHandler
     private val edgeAgentScope: CoroutineScope = CoroutineScope(Dispatchers.Default)
     private val api: Api
     internal var connectionManager: ConnectionManager
@@ -187,6 +187,7 @@ open class EdgeAgent {
         pluto: Pluto,
         mercury: Mercury,
         pollux: Pollux,
+        publishPrismHandler: PublishPrismHandler?,
         connectionManager: ConnectionManager,
         seed: Seed?,
         api: Api?,
@@ -201,6 +202,9 @@ open class EdgeAgent {
         this.pluto = pluto
         this.mercury = mercury
         this.pollux = pollux
+        if (publishPrismHandler != null) {
+            this.publishPrismHandler = publishPrismHandler
+        }
         this.connectionManager = connectionManager
         this.seed = seed ?: apollo.createRandomSeed().seed
         this.api = api ?: ApiImpl(
@@ -241,6 +245,7 @@ open class EdgeAgent {
         pluto: Pluto,
         mercury: Mercury,
         pollux: Pollux,
+        publishPrismHandler: PublishPrismHandler?,
         seed: Seed? = null,
         api: Api? = null,
         mediatorHandler: MediationHandler,
@@ -255,6 +260,9 @@ open class EdgeAgent {
         this.pluto = pluto
         this.mercury = mercury
         this.pollux = pollux
+        if (publishPrismHandler != null) {
+            this.publishPrismHandler = publishPrismHandler
+        }
         this.seed = seed ?: apollo.createRandomSeed().seed
         this.api = api ?: ApiImpl(
             httpClient {
@@ -378,7 +386,47 @@ open class EdgeAgent {
         return did
     }
 
+    /**
+     * Publishes a Prism DID to the blockchain and returns the operation result
+     *
+     * @param did The DID to publish
+     * @return Result object containing operation ID and status information
+     * @throws EdgeAgentError If publishing fails
+     */
+    suspend fun publishPrismDID(did: DID): PublishPrismHandler.RemoteDIDOperationResponse {
+        try {
+            logger.debug("Publishing Prism DID: $did")
+            // 使用函数引用传递signWith方法
+            val response = publishPrismHandler.publishPrismDid(did, this::signWith)
+            return response
+        } catch (e: EdgeAgentError.PublishPrismError) {
+            logger.error("Failed to publish Prism DID: ${e.message}")
+            throw e
+        } catch (e: Exception) {
+            logger.error("Unexpected error publishing Prism DID: ${e.message}")
+            throw EdgeAgentError.PublishPrismError("Failed to publish DID: ${e.message}")
+        }
+    }
 
+    /**
+     * 获取DID发布操作的当前状态
+     *
+     * @param operationId 要查询的操作ID
+     * @return 操作的当前状态
+     * @throws EdgeAgentError 如果获取状态失败
+     */
+    @Throws(EdgeAgentError::class)
+    suspend fun getOperationStatus(operationId: String): PublishPrismHandler.ScheduledDIDOperationStatus {
+        try {
+            logger.debug("Fetching status for DID publish operation with ID: $operationId")
+            val status = publishPrismHandler.getOperationStatus(operationId)
+            logger.debug("Successfully retrieved status for operation $operationId: $status")
+            return status
+        } catch (e: Exception) {
+            logger.error("Failed to get operation status for ID $operationId: ${e.message}")
+            throw EdgeAgentError.PublishPrismError("Failed to get operation status: ${e.message}")
+        }
+    }
 
     /**
      * This function receives a Prism DID and its information and stores it into the local database.

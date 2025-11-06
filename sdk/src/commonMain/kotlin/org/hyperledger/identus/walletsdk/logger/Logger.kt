@@ -343,5 +343,7 @@ enum class LogComponent(var logLevel: LogLevel) {
     MERCURY(LogLevel.DEBUG),
     PLUTO(LogLevel.DEBUG),
     POLLUX(LogLevel.DEBUG),
+
+    PUBLISHER(LogLevel.DEBUG),
     EDGE_AGENT(LogLevel.DEBUG)
 }

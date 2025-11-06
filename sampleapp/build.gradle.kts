@@ -10,6 +10,13 @@ android {
     namespace = "org.hyperledger.identus.walletsdk.sampleapp"
     compileSdk = 34
 
+    kotlinOptions {
+        jvmTarget = "17"
+        // 添加以下配置确保使用正确的Kotlin版本
+        apiVersion = "1.8"
+        languageVersion = "1.8"
+    }
+
     defaultConfig {
         applicationId = "org.hyperledger.identus.walletsdk"
         minSdk = 28
@@ -105,6 +112,8 @@ dependencies {
 
     // Unit Tests
     testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.test:core:1.5.0") // 添加这一行
+    testImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }
