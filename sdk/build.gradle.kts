@@ -104,7 +104,7 @@ publishing {
             url = uri("https://maven.pkg.github.com/abraham0929/sdk-kmp")
             credentials {
                 username = "abraham0929"
-                password = "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"
+                password = "xxxx"
             }
         }
     }

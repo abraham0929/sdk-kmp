@@ -56,7 +56,7 @@ allprojects {
             setUrl("https://maven.pkg.github.com/LF-Decentralized-Trust-labs/aries-uniffi-wrappers")
             credentials {
                 username = "abraham0929"
-                password = "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"
+                password = "xxxx"
             }
         }
         maven {
@@ -64,7 +64,7 @@ allprojects {
             url = uri("https://maven.pkg.github.com/abraham0929/sdk-kmp")
             credentials {
                 username = "abraham0929"
-                password = "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"
+                password = "xxxx"
             }
         }
     }
