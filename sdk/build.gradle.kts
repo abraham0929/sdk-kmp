@@ -91,10 +91,20 @@ publishing {
                     }
                 }
                 scm {
-                    connection.set("scm:git:git://hyperledger-identus/sdk-kmp.git")
-                    developerConnection.set("scm:git:ssh://hyperledger-identus/sdk-kmp.git")
-                    url.set("https://github.com/hyperledger-identus/sdk-kmp")
+                    connection.set("scm:git:git://abraham0929/sdk-kmp.git")
+                    developerConnection.set("scm:git:ssh://abraham0929/sdk-kmp.git")
+                    url.set("https://github.com/abraham0929/sdk-kmp")
                 }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/abraham0929/sdk-kmp")
+            credentials {
+                username = "abraham0929"
+                password = "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"
             }
         }
     }
@@ -355,7 +365,7 @@ tasks.withType<DokkaTask>().configureEach {
             )
             sourceLink {
                 localDirectory.set(projectDir.resolve("src"))
-                remoteUrl.set(URL("https://github.com/hyperledger-identus/sdk-kmp/tree/main/src"))
+                remoteUrl.set(URL("https://github.com/abraham0929/sdk-kmp/tree/main/src"))
                 remoteLineSuffix.set("#L")
             }
             externalDocumentationLink {

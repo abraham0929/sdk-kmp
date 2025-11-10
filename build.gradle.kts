@@ -56,7 +56,15 @@ allprojects {
             setUrl("https://maven.pkg.github.com/LF-Decentralized-Trust-labs/aries-uniffi-wrappers")
             credentials {
                 username = "abraham0929"
-                password = "xxxxxx"
+                password = "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"
+            }
+        }
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/abraham0929/sdk-kmp")
+            credentials {
+                username = "abraham0929"
+                password = "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"
             }
         }
     }
@@ -122,13 +130,13 @@ subprojects {
     }
 }
 
-nexusPublishing {
-    repositories {
-        sonatype {
-            nexusUrl.set(uri("https://oss.sonatype.org/service/local/"))
-            snapshotRepositoryUrl.set(uri("https://oss.sonatype.org/content/repositories/snapshots/"))
-            username.set(System.getenv("OSSRH_USERNAME"))
-            password.set(System.getenv("OSSRH_PASSWORD"))
-        }
-    }
-}
+//nexusPublishing {
+//    repositories {
+//        sonatype {
+//            nexusUrl.set(uri("https://oss.sonatype.org/service/local/"))
+//            snapshotRepositoryUrl.set(uri("https://oss.sonatype.org/content/repositories/snapshots/"))
+//            username.set(System.getenv("OSSRH_USERNAME"))
+//            password.set(System.getenv("OSSRH_PASSWORD"))
+//        }
+//    }
+//}
