@@ -15,9 +15,12 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.encoding.CompositeDecoder
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.encoding.encodeStructure
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.booleanOrNull
@@ -33,6 +36,68 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.serializer
+@OptIn(ExperimentalSerializationApi::class)
+object VerifiableCredentialTypeContainerSerializer : KSerializer<VerifiableCredentialTypeContainer?> {
+
+    private const val CLASS_NAME = "VerifiableCredentialTypeContainer"
+    private const val FIELD_ID = "id"
+    private const val FIELD_TYPE = "type"
+    private const val ERROR_MISSING_ID = "Missing 'id' field in $CLASS_NAME"
+    private const val ERROR_MISSING_TYPE = "Missing 'type' field in $CLASS_NAME"
+    private const val ERROR_INVALID_FORMAT = "Invalid format for $CLASS_NAME, expected object or non-empty array"
+    private const val ERROR_NOT_JSON_DECODER = "Decoder is not a JsonDecoder, only JSON format is supported"
+
+
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor(CLASS_NAME) {
+            element<String>(FIELD_ID)
+            element<String>(FIELD_TYPE)
+        }
+
+    override fun serialize(encoder: Encoder, value: VerifiableCredentialTypeContainer?) {
+        if (value == null) {
+            encoder.encodeNull()
+            return
+        }
+
+        encoder.encodeStructure(descriptor) {
+            encodeStringElement(descriptor, 0, value.id)
+            encodeStringElement(descriptor, 1, value.type)
+        }
+    }
+
+    override fun deserialize(decoder: Decoder): VerifiableCredentialTypeContainer? {
+        val jsonDecoder = decoder as? JsonDecoder
+            ?: throw SerializationException(ERROR_NOT_JSON_DECODER)
+
+        val jsonElement = jsonDecoder.decodeJsonElement()
+
+        return when {
+            jsonElement is JsonObject -> parseJsonObject(jsonElement)
+            jsonElement is JsonArray && jsonElement.isNotEmpty() -> parseJsonArray(jsonElement)
+            jsonElement is JsonArray && jsonElement.isEmpty() -> null
+            else -> throw SerializationException(ERROR_INVALID_FORMAT)
+        }
+    }
+
+    private fun parseJsonObject(jsonObject: JsonObject): VerifiableCredentialTypeContainer {
+        val id = jsonObject[FIELD_ID]?.jsonPrimitive?.content
+            ?: throw SerializationException(ERROR_MISSING_ID)
+        val type = jsonObject[FIELD_TYPE]?.jsonPrimitive?.content
+            ?: throw SerializationException(ERROR_MISSING_TYPE)
+
+        return VerifiableCredentialTypeContainer(id, type)
+    }
+
+    private fun parseJsonArray(jsonArray: JsonArray): VerifiableCredentialTypeContainer {
+        val firstElement = jsonArray.first()
+        if (firstElement !is JsonObject) {
+            throw SerializationException("First element in array must be a JSON object")
+        }
+
+        return parseJsonObject(firstElement)
+    }
+}
 
 /**
  * A data class representing a container for verifiable credential types.

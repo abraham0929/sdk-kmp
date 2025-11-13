@@ -66,12 +66,16 @@ data class JWTVerifiableCredential @JvmOverloads constructor(
     @SerialName("@context")
     val context: Array<String> = arrayOf(),
     val type: Array<String> = arrayOf(),
+    @Serializable(with = VerifiableCredentialTypeContainerSerializer::class)
     val credentialSchema: VerifiableCredentialTypeContainer? = null,
     @Serializable(with = MapStringAnyToStringSerializer::class)
     val credentialSubject: Map<String, String>,
     val credentialStatus: CredentialStatus? = null,
+    @Serializable(with = VerifiableCredentialTypeContainerSerializer::class)
     val refreshService: VerifiableCredentialTypeContainer? = null,
+    @Serializable(with = VerifiableCredentialTypeContainerSerializer::class)
     val evidence: VerifiableCredentialTypeContainer? = null,
+    @Serializable(with = VerifiableCredentialTypeContainerSerializer::class)
     val termsOfUse: VerifiableCredentialTypeContainer? = null
 ) {
     /**
