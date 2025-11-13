@@ -103,8 +103,8 @@ publishing {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/abraham0929/sdk-kmp")
             credentials {
-                username = "abraham0929"
-                password = "xxxx"
+                username = rootProject.extra["githubUsername"] as String
+                password = rootProject.extra["githubToken"] as String
             }
         }
     }

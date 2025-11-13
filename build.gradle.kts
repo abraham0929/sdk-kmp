@@ -1,7 +1,8 @@
 import org.gradle.internal.os.OperatingSystem
-
+import java.util.Properties
 val groupId = "org.hyperledger.identus"
 val os: OperatingSystem = OperatingSystem.current()
+
 
 plugins {
     id("com.android.library") version "8.1.4" apply false
@@ -35,6 +36,23 @@ java {
     }
 }
 
+// 在文件顶部添加local.properties加载代码
+val localProperties = File(rootProject.projectDir, "local.properties")
+if (localProperties.exists()) {
+    localProperties.reader().use { reader ->
+        val properties = Properties()
+        properties.load(reader)
+        properties.forEach { key, value ->
+            rootProject.extra[key.toString()] = value
+        }
+    }
+}
+val githubUsername: String = findProperty("github.username") as? String ?: ""
+val githubToken: String = findProperty("github.token") as? String ?: ""
+
+extra["githubUsername"] = githubUsername
+extra["githubToken"] = githubToken
+
 allprojects {
     this.group = groupId
 
@@ -55,16 +73,16 @@ allprojects {
 //            }
             setUrl("https://maven.pkg.github.com/LF-Decentralized-Trust-labs/aries-uniffi-wrappers")
             credentials {
-                username = "abraham0929"
-                password = "xxxx"
+                username = githubUsername
+                password = githubToken
             }
         }
         maven {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/abraham0929/sdk-kmp")
             credentials {
-                username = "abraham0929"
-                password = "xxxx"
+                username = githubUsername
+                password = githubToken
             }
         }
     }
