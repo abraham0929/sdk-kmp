@@ -6,7 +6,6 @@ import app.cash.sqldelight.ColumnAdapter
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.db.AfterVersion
-import java.util.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -35,14 +34,15 @@ import org.hyperledger.identus.walletsdk.domain.models.keyManagement.JWK
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.PrivateKey
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.StorableKey
 import org.hyperledger.identus.walletsdk.domain.models.keyManagement.StorablePrivateKey
+import org.hyperledger.identus.walletsdk.logger.LogComponent
 import org.hyperledger.identus.walletsdk.logger.Logger
 import org.hyperledger.identus.walletsdk.logger.LoggerImpl
-import org.hyperledger.identus.walletsdk.logger.LogComponent
-import org.hyperledger.identus.walletsdk.pluto.models.backup.BackupV0_0_1
 import org.hyperledger.identus.walletsdk.pluto.data.DbConnection
 import org.hyperledger.identus.walletsdk.pluto.data.isConnected
 import org.hyperledger.identus.walletsdk.pluto.models.DidKeyLink
+import org.hyperledger.identus.walletsdk.pluto.models.backup.BackupV0_0_1
 import org.hyperledger.identus.walletsdk.pollux.models.CredentialRequestMeta
+import java.util.UUID
 import org.hyperledger.identus.walletsdk.pluto.data.AvailableClaims as AvailableClaimsDB
 import org.hyperledger.identus.walletsdk.pluto.data.DID as DIDDB
 import org.hyperledger.identus.walletsdk.pluto.data.DIDPair as DIDPairDB
@@ -1252,6 +1252,62 @@ class PlutoImpl(
                         didId = didKeyLink.didId,
                         keyId = didKeyLink.keyId,
                         alias = didKeyLink.alias
+                    )
+                }
+            }
+    }
+
+    override fun getMessagesInThidsAndPiuri(
+        thids: List<String>,
+        piuri: String
+    ): Flow<List<Message>> {
+        return getInstance().messageQueries.fetchAllMessagesInThidsAndPiuri(thids, piuri)
+            .asFlow()
+            .map {
+                it.executeAsList().map { message ->
+                    val messageDb = Json.decodeFromString<Message>(message.dataJson)
+                    Message(
+                        messageDb.id,
+                        messageDb.piuri,
+                        messageDb.from,
+                        messageDb.to,
+                        messageDb.fromPrior,
+                        messageDb.body,
+                        messageDb.extraHeaders,
+                        messageDb.createdTime,
+                        messageDb.expiresTimePlus,
+                        messageDb.attachments,
+                        messageDb.thid,
+                        messageDb.pthid,
+                        messageDb.ack,
+                        messageDb.direction
+                    )
+                }
+            }
+    }
+
+    // timestamp格式为： Clock.System.now().epochSeconds.toString()
+    override fun observeMessages(piuris: List<String>, startTimestamp: String): Flow<List<Message>> {
+        return getInstance().messageQueries.fetchAllMessagesAfterTimestamp(piuris, startTimestamp)
+            .asFlow()
+            .map {
+                it.executeAsList().map { message ->
+                    val messageDb = Json.decodeFromString<Message>(message.dataJson)
+                    Message(
+                        messageDb.id,
+                        messageDb.piuri,
+                        messageDb.from,
+                        messageDb.to,
+                        messageDb.fromPrior,
+                        messageDb.body,
+                        messageDb.extraHeaders,
+                        messageDb.createdTime,
+                        messageDb.expiresTimePlus,
+                        messageDb.attachments,
+                        messageDb.thid,
+                        messageDb.pthid,
+                        messageDb.ack,
+                        messageDb.direction
                     )
                 }
             }

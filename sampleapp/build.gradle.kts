@@ -9,7 +9,7 @@ apply(plugin = "kotlinx-atomicfu")
 
 android {
     namespace = "org.hyperledger.identus.walletsdk.sampleapp"
-    compileSdk = 34
+    compileSdk = 36
 
     kotlinOptions {
         jvmTarget = "17"
@@ -21,7 +21,7 @@ android {
     defaultConfig {
         applicationId = "org.hyperledger.identus.walletsdk"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -56,7 +56,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-    buildToolsVersion = "34.0.0"
+    buildToolsVersion = "36.1.0"
 }
 
 configurations.all {

@@ -297,7 +297,8 @@ kotlin {
 }
 
 android {
-    compileSdk = 34
+    compileSdk = 36
+    buildToolsVersion = "36.1.0"
     namespace = "org.hyperledger.identus"
     defaultConfig {
         minSdk = 21

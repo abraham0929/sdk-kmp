@@ -47,7 +47,6 @@ object VerifiableCredentialTypeContainerSerializer : KSerializer<VerifiableCrede
     private const val ERROR_INVALID_FORMAT = "Invalid format for $CLASS_NAME, expected object or non-empty array"
     private const val ERROR_NOT_JSON_DECODER = "Decoder is not a JsonDecoder, only JSON format is supported"
 
-
     override val descriptor: SerialDescriptor =
         buildClassSerialDescriptor(CLASS_NAME) {
             element<String>(FIELD_ID)

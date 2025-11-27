@@ -67,3 +67,16 @@ fetchAllMessagesByType:
 SELECT *
 FROM Message
 WHERE type = ?;
+
+fetchAllMessagesInThidsAndPiuri:
+SELECT *
+FROM Message
+WHERE thid IN ?
+  AND type = ?;
+
+fetchAllMessagesAfterTimestamp:
+SELECT *
+FROM Message
+WHERE type IN ?
+AND createdTime > ?
+ORDER BY createdTime ASC;

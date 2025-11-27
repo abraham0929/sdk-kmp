@@ -222,35 +222,53 @@ class ConnectionManagerImpl(
         scope.launch {
             val messagesIds = mutableListOf<String>()
             val messages = mutableListOf<Message>()
-            arrayMessages.map { pair ->
+            arrayMessages.forEach { pair ->
                 messagesIds.add(pair.first)
                 messages.add(pair.second)
             }
-
-            val allMessages = pluto.getAllMessages().first()
-
             val revokedMessages = messages.filter { it.piuri == ProtocolType.PrismRevocation.value }
-            revokedMessages.forEach { msg ->
-                val revokedMessage = RevocationNotification.fromMessage(msg)
-                val threadId = revokedMessage.body.threadId
-                val matchingMessages =
-                    allMessages.filter { it.piuri == ProtocolType.DidcommIssueCredential.value && it.thid == threadId }
-                if (matchingMessages.isNotEmpty()) {
-                    matchingMessages.forEach { message ->
-                        val issueMessage = IssueCredential.fromMessage(message)
+
+            // Extract thread IDs from revocation messages
+            val threadIds = revokedMessages.mapNotNull { msg ->
+                try {
+                    val revokedMessage = RevocationNotification.fromMessage(msg)
+                    revokedMessage.body.threadId
+                } catch (e: Exception) {
+                    println("Error processing revocation message: ${e.message}")
+                    null
+                }
+            }
+
+            if (threadIds.isNotEmpty()) {
+                // Batch query for all matching messages
+                val matchingMessages = pluto.getMessagesInThidsAndPiuri(
+                    threadIds,
+                    ProtocolType.DidcommIssueCredential.value
+                ).firstOrNull() ?: emptyList()
+
+                matchingMessages.forEach { matchingMessage ->
+                    try {
+                        val issueMessage = IssueCredential.fromMessage(matchingMessage)
+
+                        // Check if it is JWT format
                         if (pollux.extractCredentialFormatFromMessage(issueMessage.attachments) == CredentialType.JWT) {
-                            val attachment =
-                                issueMessage.attachments.firstOrNull()?.data as? AttachmentBase64
+                            val attachment = issueMessage.attachments.firstOrNull()?.data as? AttachmentBase64
+
                             attachment?.let {
-                                val credentialId = it.base64.base64UrlDecoded
-                                pluto.revokeCredential(credentialId)
+                                try {
+                                    val credentialId = it.base64.base64UrlDecoded
+                                    pluto.revokeCredential(credentialId)
+                                } catch (e: Exception) {
+                                    println("Error decoding credential ID: ${e.message}")
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        println("Error processing matching message: ${e.message}")
                     }
                 }
             }
 
-            // If there are any messages, mark them as read and store them
             if (messagesIds.isNotEmpty()) {
                 mediationHandler.registerMessagesAsRead(
                     messagesIds.toTypedArray()

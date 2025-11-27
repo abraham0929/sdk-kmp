@@ -3,7 +3,6 @@ import java.util.Properties
 val groupId = "org.hyperledger.identus"
 val os: OperatingSystem = OperatingSystem.current()
 
-
 plugins {
     id("com.android.library") version "8.1.4" apply false
     kotlin("jvm") version "2.1.0"

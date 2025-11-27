@@ -309,6 +309,15 @@ interface Pluto {
      */
     fun getMessageByThidAndPiuri(thid: String, piuri: String): Flow<Message?>
 
+    fun getMessagesInThidsAndPiuri(thids: List<String>, piuri: String): Flow<List<Message>>
+
+    /**
+     * 监听增量消息流。
+     * @param piuris 需要监听的协议类型列表
+     * @param startTimestamp 从哪个时间点开始监听（通常传当前时间）
+     */
+    fun observeMessages(piuris: List<String>, startTimestamp: String): Flow<List<Message>>
+
     /**
      * Returns a Flow of lists of [Mediator] objects representing all the available mediators.
      *

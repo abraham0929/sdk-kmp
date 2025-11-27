@@ -167,6 +167,14 @@ class PlutoMock : Pluto {
         TODO("Not yet implemented")
     }
 
+    override fun getMessagesInThidsAndPiuri(thids: List<String>, piuri: String): Flow<List<Message>> {
+        TODO("Not yet implemented")
+    }
+
+    override fun observeMessages(piuris: List<String>, startTimestamp: String): Flow<List<Message>> {
+        TODO("Not yet implemented")
+    }
+
     override fun getAllMediators(): Flow<List<Mediator>> {
         TODO("Not yet implemented")
     }
