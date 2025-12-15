@@ -3,8 +3,6 @@ package org.hyperledger.identus.walletsdk.domain.models
 import kotlinx.serialization.Serializable
 import org.hyperledger.identus.walletsdk.domain.DID
 import org.hyperledger.identus.walletsdk.domain.DID_SEPARATOR
-import kotlin.jvm.JvmOverloads
-import kotlin.jvm.JvmStatic
 
 /**
  * A DID is a unique and persistent identifier for a subject or object, such as a person, organization, or device.
@@ -72,10 +70,13 @@ data class DID @JvmOverloads constructor(
          */
         @JvmStatic
         fun getMethodIdFromString(string: String): String {
-            val split = string.split(DID_SEPARATOR).toMutableList()
-            split.removeFirst()
-            split.removeFirst()
-            return split.joinToString(DID_SEPARATOR)
+            return string.split(DID_SEPARATOR)
+                .drop(2)
+                .joinToString(DID_SEPARATOR)
+//            val split = string.split(DID_SEPARATOR).toMutableList()
+//            split.removeFirst()
+//            split.removeFirst()
+//            return split.joinToString(DID_SEPARATOR)
         }
     }
 }

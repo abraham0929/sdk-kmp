@@ -324,7 +324,7 @@ android {
 
     packaging {
         resources {
-            merges += "**/**.proto"
+            merges += "**/*.proto"
         }
     }
 }
@@ -401,48 +401,32 @@ afterEvaluate {
     tasks.withType<PublishToMavenLocal> {
         dependsOn(tasks.withType<Sign>())
     }
-    tasks.getByName("runKtlintCheckOverCommonMainSourceSet") {
-        dependsOn(buildProtoLibsGen)
-    }
-    // 添加这一行，让runKtlintFormatOverCommonMainSourceSet任务也依赖于buildProtoLibsGen
-    tasks.getByName("runKtlintFormatOverCommonMainSourceSet") {
-        dependsOn(buildProtoLibsGen)
+    
+    // Optimize task dependencies by grouping similar tasks
+    val ktlintTasks = listOf(
+        "runKtlintCheckOverCommonMainSourceSet",
+        "runKtlintFormatOverCommonMainSourceSet"
+    )
+    
+    ktlintTasks.forEach { taskName ->
+        tasks.findByName(taskName)?.dependsOn(buildProtoLibsGen)
     }
 
-    tasks.getByName("build") {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.withType<KotlinCompile> {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.withType<ProcessResources> {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.withType<SourceJarTask> {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.withType<org.gradle.jvm.tasks.Jar> {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.withType<PackageAndroidArtifact> {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.named("packageDebugResources") {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.named("packageReleaseResources") {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.named("androidReleaseSourcesJar") {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.named("androidDebugSourcesJar") {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.named("jvmSourcesJar") {
-        dependsOn(buildProtoLibsGen)
-    }
-    tasks.named("sourcesJar") {
-        dependsOn(buildProtoLibsGen)
+    // Group build-related tasks
+    val buildTasks = listOf(
+        "build",
+        "compileKotlinJvm",
+        "compileKotlinAndroid",
+        "processResources",
+        "sourcesJar",
+        "jvmSourcesJar",
+        "androidReleaseSourcesJar",
+        "androidDebugSourcesJar",
+        "packageDebugResources",
+        "packageReleaseResources"
+    )
+    
+    buildTasks.forEach { taskName ->
+        tasks.findByName(taskName)?.dependsOn(buildProtoLibsGen)
     }
 }
