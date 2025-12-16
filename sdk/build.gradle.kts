@@ -1,8 +1,5 @@
-import com.android.build.gradle.tasks.PackageAndroidArtifact
-import com.android.build.gradle.tasks.SourceJarTask
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.dokka.gradle.DokkaTask
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.net.URL
 
 val currentModuleName: String = "sdk"
@@ -173,6 +170,12 @@ val javadocJar by tasks.registering(Jar::class) {
 kotlin {
     androidTarget {
         publishAllLibraryVariants()
+        // Add explicit JVM target configuration for Android
+        compilations.all {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
     }
 
     jvm {
@@ -308,6 +311,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    // Add Kotlin compiler options to match Java version
+    kotlin {
+        jvmToolchain(17)
+    }
     /**
      * Because Software Components will not be created automatically for Maven publishing from
      * Android Gradle Plugin 8.0. To opt-in to the future behavior, set the Gradle property android.
@@ -401,13 +408,11 @@ afterEvaluate {
     tasks.withType<PublishToMavenLocal> {
         dependsOn(tasks.withType<Sign>())
     }
-    
     // Optimize task dependencies by grouping similar tasks
     val ktlintTasks = listOf(
         "runKtlintCheckOverCommonMainSourceSet",
         "runKtlintFormatOverCommonMainSourceSet"
     )
-    
     ktlintTasks.forEach { taskName ->
         tasks.findByName(taskName)?.dependsOn(buildProtoLibsGen)
     }
@@ -425,8 +430,9 @@ afterEvaluate {
         "packageDebugResources",
         "packageReleaseResources"
     )
-    
     buildTasks.forEach { taskName ->
         tasks.findByName(taskName)?.dependsOn(buildProtoLibsGen)
     }
 }
+
+// Add a newline at the end of the file to satisfy ktlint

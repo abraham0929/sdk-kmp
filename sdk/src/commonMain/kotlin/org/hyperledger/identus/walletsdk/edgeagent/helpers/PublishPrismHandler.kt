@@ -31,6 +31,61 @@ class PublishPrismHandler(
 ) {
 
     /**
+     * Data class for health check response
+     */
+    @Serializable
+    data class HealthResponse(val version: String)
+
+    /**
+     * Result class to encapsulate either success data or error information
+     */
+    sealed class PublishResult<T> {
+        data class Success<T>(val data: T) : PublishResult<T>()
+        data class Error<T>(val message: String, val exception: Exception? = null) : PublishResult<T>()
+    }
+
+    /**
+     * Checks if the cloud agent is accessible
+     *
+     * @return true if accessible, false otherwise
+     */
+    suspend fun isCloudAgentAccessible(): PublishResult<Boolean> {
+        return try {
+            logger.debug("Checking cloud agent accessibility: $cloudAgentUrl")
+            val httpResponse = api.request(
+                httpMethod = HttpMethod.Get.value,
+                url = "$cloudAgentUrl/_system/health",
+                body = null
+            )
+
+            // Check if status indicates success (2xx)
+            if (httpResponse.status in 200..299) {
+                // Try to parse the health response
+                val isValidHealthResponse = runCatching {
+                    Json.decodeFromString<HealthResponse>(httpResponse.jsonString)
+                    true
+                }.getOrElse {
+                    logger.warning("Cloud agent responded with invalid health format: ${it.message}")
+                    false
+                }
+
+                if (isValidHealthResponse) {
+                    logger.debug("Cloud agent health check successful.")
+                    PublishResult.Success(true)
+                } else {
+                    PublishResult.Success(false)
+                }
+            } else {
+                logger.warning("Cloud agent returned non-success status: ${httpResponse.status}")
+                PublishResult.Success(false)
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to access cloud agent: ${e.message}")
+            PublishResult.Error("Failed to access cloud agent: ${e.message}", e)
+        }
+    }
+
+    /**
      * Publishes a Prism DID to the blockchain via cloudagent API
      *
      * @param did The DID to publish
@@ -41,12 +96,18 @@ class PublishPrismHandler(
     suspend fun publishPrismDid(
         did: DID,
         signWithFunction: suspend (DID, ByteArray) -> Signature
-    ): RemoteDIDOperationResponse {
-        try {
+    ): PublishResult<RemoteDIDOperationResponse> {
+        return try {
             logger.debug("Starting publishing process for DID: $did")
 
             // 将DID转换为base64url编码的SignedAtalaOperation
-            val signedOperation = convertDidToSignedAtalaOperation(did, signWithFunction)
+            val signedOperationResult = convertDidToSignedAtalaOperation(did, signWithFunction)
+
+            // Handle potential error from convertDidToSignedAtalaOperation
+            val signedOperation = when (signedOperationResult) {
+                is PublishResult.Success -> signedOperationResult.data
+                is PublishResult.Error -> return signedOperationResult as PublishResult.Error<RemoteDIDOperationResponse>
+            }
 
             // 构建请求体
             val requestBody = PublishDidRequest(signedOperation)
@@ -57,13 +118,20 @@ class PublishPrismHandler(
                 url = "$cloudAgentUrl/dids/operations",
                 body = requestBody
             )
-            val response = Json.decodeFromString<RemoteDIDOperationResponse>(httpResponse.jsonString)
-            logger.info("Successfully submitted DID publish request, operationId: ${response.operationId}, status: ${response.status}")
-            return response
+
+            // Check if status indicates success (2xx)
+            if (httpResponse.status in 200..299) {
+                val response = Json.decodeFromString<RemoteDIDOperationResponse>(httpResponse.jsonString)
+                logger.info("Successfully submitted DID publish request, operationId: ${response.operationId}, status: ${response.status}")
+                PublishResult.Success<RemoteDIDOperationResponse>(response)
+            } else {
+                logger.error("Failed to publish DID. Cloud agent returned status: ${httpResponse.status}")
+                PublishResult.Error<RemoteDIDOperationResponse>("Failed to publish DID. Cloud agent returned status: ${httpResponse.status}")
+            }
         } catch (e: Exception) {
-            // 修复：只传递错误消息，不传递Exception对象
+            // 返回错误信息而不是抛出异常
             logger.error("Failed to publish DID: ${e.message}")
-            throw EdgeAgentError.PublishPrismError("Failed to publish DID: ${e.message}")
+            PublishResult.Error<RemoteDIDOperationResponse>("Failed to publish DID: ${e.message}", e)
         }
     }
 
@@ -74,8 +142,8 @@ class PublishPrismHandler(
      * @return The status of the operation
      * @throws EdgeAgentError If retrieving the status fails
      */
-    suspend fun getOperationStatus(operationId: String): ScheduledDIDOperationStatus {
-        try {
+    suspend fun getOperationStatus(operationId: String): PublishResult<ScheduledDIDOperationStatus> {
+        return try {
             logger.debug("Checking status for operation ID: $operationId")
 
             // 调用cloudagent的获取操作状态接口
@@ -84,14 +152,20 @@ class PublishPrismHandler(
                 url = "$cloudAgentUrl/dids/operations/$operationId",
                 body = null
             )
-            val response = Json.decodeFromString<OperationStatusResponse>(httpResponse.jsonString)
 
-            logger.info("Retrieved status for operation $operationId: ${response.status}")
-            return response.status
+            // Check if status indicates success (2xx)
+            if (httpResponse.status in 200..299) {
+                val response = Json.decodeFromString<OperationStatusResponse>(httpResponse.jsonString)
+                logger.info("Retrieved status for operation $operationId: ${response.status}")
+                PublishResult.Success<ScheduledDIDOperationStatus>(response.status)
+            } else {
+                logger.error("Failed to get operation status. Cloud agent returned status: ${httpResponse.status}")
+                PublishResult.Error<ScheduledDIDOperationStatus>("Failed to get operation status. Cloud agent returned status: ${httpResponse.status}")
+            }
         } catch (e: Exception) {
-            // 修复：只传递错误消息，不传递Exception对象
+            // 返回错误信息而不是抛出异常
             logger.error("Failed to get operation status: ${e.message}")
-            throw EdgeAgentError.PublishPrismError("Failed to get operation status: ${e.message}")
+            PublishResult.Error<ScheduledDIDOperationStatus>("Failed to get operation status: ${e.message}", e)
         }
     }
 
@@ -106,8 +180,8 @@ class PublishPrismHandler(
     private suspend fun convertDidToSignedAtalaOperation(
         did: DID,
         signWithFunction: suspend (DID, ByteArray) -> Signature
-    ): String {
-        try {
+    ): PublishResult<String> {
+        return try {
             // 1. 将DID解析为LongFormPrismDID以获取编码状态
             val longFormDID = LongFormPrismDID(did)
 
@@ -117,7 +191,7 @@ class PublishPrismHandler(
 
             // 3. 确保操作类型是CreateDIDOperation
             if (atalaOperation.operation !is AtalaOperation.Operation.CreateDid) {
-                throw EdgeAgentError.PublishPrismError("DID does not contain a CreateDIDOperation")
+                return PublishResult.Error("DID does not contain a CreateDIDOperation")
             }
 
             // 4. 使用EdgeAgent签名AtalaOperation
@@ -131,11 +205,11 @@ class PublishPrismHandler(
             )
 
             // 6. 转换为base64url编码
-            return signedOperation.encodeToByteArray().base64UrlEncoded
+            PublishResult.Success(signedOperation.encodeToByteArray().base64UrlEncoded)
         } catch (e: Exception) {
-            // 修复：只传递错误消息，不传递Exception对象
+            // 返回错误信息而不是抛出异常
             logger.error("Failed to convert DID to SignedAtalaOperation: ${e.message}")
-            throw EdgeAgentError.PublishPrismError("Failed to convert DID to SignedAtalaOperation: ${e.message}")
+            PublishResult.Error("Failed to convert DID to SignedAtalaOperation: ${e.message}", e)
         }
     }
 
@@ -155,7 +229,7 @@ class PublishPrismHandler(
      * Data class representing the response from cloudagent when checking operation status
      */
     @Serializable
-    private data class OperationStatusResponse(val status: ScheduledDIDOperationStatus)
+    private data class OperationStatusResponse(val operationId: String, val status: ScheduledDIDOperationStatus)
 
     /**
      * Enum representing the possible statuses of an operation

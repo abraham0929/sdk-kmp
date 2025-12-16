@@ -391,20 +391,21 @@ open class EdgeAgent {
      *
      * @param did The DID to publish
      * @return Result object containing operation ID and status information
-     * @throws EdgeAgentError If publishing fails
+     * @throws EdgeAgentError.PublishPrismError If publishing fails
      */
+    @Throws(EdgeAgentError.PublishPrismError::class)
     suspend fun publishPrismDID(did: DID): PublishPrismHandler.RemoteDIDOperationResponse {
-        try {
-            logger.debug("Publishing Prism DID: $did")
-            // 使用函数引用传递signWith方法
-            val response = publishPrismHandler.publishPrismDid(did, this::signWith)
-            return response
-        } catch (e: EdgeAgentError.PublishPrismError) {
-            logger.error("Failed to publish Prism DID: ${e.message}")
-            throw e
-        } catch (e: Exception) {
-            logger.error("Unexpected error publishing Prism DID: ${e.message}")
-            throw EdgeAgentError.PublishPrismError("Failed to publish DID: ${e.message}")
+        logger.debug("Publishing Prism DID: $did")
+        // 使用函数引用传递signWith方法
+        val response = publishPrismHandler.publishPrismDid(did, this::signWith)
+
+        // Handle the new PublishResult return type
+        return when (response) {
+            is PublishPrismHandler.PublishResult.Success -> response.data
+            is PublishPrismHandler.PublishResult.Error -> {
+                logger.error("Failed to publish Prism DID: ${response.message}")
+                throw EdgeAgentError.PublishPrismError(response.message)
+            }
         }
     }
 
@@ -413,18 +414,41 @@ open class EdgeAgent {
      *
      * @param operationId 要查询的操作ID
      * @return 操作的当前状态
-     * @throws EdgeAgentError 如果获取状态失败
+     * @throws EdgeAgentError.PublishPrismError 如果获取状态失败
      */
-    @Throws(EdgeAgentError::class)
+    @Throws(EdgeAgentError.PublishPrismError::class)
     suspend fun getOperationStatus(operationId: String): PublishPrismHandler.ScheduledDIDOperationStatus {
-        try {
-            logger.debug("Fetching status for DID publish operation with ID: $operationId")
-            val status = publishPrismHandler.getOperationStatus(operationId)
-            logger.debug("Successfully retrieved status for operation $operationId: $status")
-            return status
-        } catch (e: Exception) {
-            logger.error("Failed to get operation status for ID $operationId: ${e.message}")
-            throw EdgeAgentError.PublishPrismError("Failed to get operation status: ${e.message}")
+        logger.debug("Fetching status for DID publish operation with ID: $operationId")
+        val status = publishPrismHandler.getOperationStatus(operationId)
+
+        // Handle the new PublishResult return type
+        return when (status) {
+            is PublishPrismHandler.PublishResult.Success -> status.data
+            is PublishPrismHandler.PublishResult.Error -> {
+                logger.error("Failed to get operation status for ID $operationId: ${status.message}")
+                throw EdgeAgentError.PublishPrismError(status.message)
+            }
+        }
+    }
+
+    /**
+     * Checks if the cloud agent is accessible
+     *
+     * @return true if accessible, false otherwise
+     * @throws EdgeAgentError.PublishPrismError if there is an error checking accessibility
+     */
+    @Throws(EdgeAgentError.PublishPrismError::class)
+    suspend fun isCloudAgentAccessible(): Boolean {
+        logger.debug("Checking cloud agent accessibility")
+        val result = publishPrismHandler.isCloudAgentAccessible()
+
+        // Handle the PublishResult return type
+        return when (result) {
+            is PublishPrismHandler.PublishResult.Success -> result.data
+            is PublishPrismHandler.PublishResult.Error -> {
+                logger.error("Failed to check cloud agent accessibility: ${result.message}")
+                throw EdgeAgentError.PublishPrismError(result.message)
+            }
         }
     }
 
@@ -1647,7 +1671,10 @@ open class EdgeAgent {
     }
 
     /**
-     * Enumeration representing the current state of the agent.
+     * Checks if the cloud agent is accessible
+     *
+     * @return true if accessible, false otherwise
+     * @throws EdgeAgentError.PublishPrismError if there is an error checking accessibility
      */
     enum class State {
         STOPPED,

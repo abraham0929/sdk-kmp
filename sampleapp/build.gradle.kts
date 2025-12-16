@@ -57,6 +57,14 @@ android {
         jvmTarget = "17"
     }
     buildToolsVersion = "36.1.0"
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.systemProperty("robolectric.enabledSdks", "28")
+            }
+        }
+    }
 }
 
 configurations.all {
@@ -112,6 +120,10 @@ dependencies { // Android
     testImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    // Add Robolectric for mocking Android classes in JVM tests
+    testImplementation("org.robolectric:robolectric:4.10.3")
+    // Add SLF4J implementation to fix logging warnings
+    testImplementation("org.slf4j:slf4j-simple:1.7.36")
     implementation(kotlin("stdlib"))
 }
 repositories {

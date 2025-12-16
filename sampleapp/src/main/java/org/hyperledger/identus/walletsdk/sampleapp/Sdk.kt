@@ -80,7 +80,7 @@ class Sdk {
 
     suspend fun startAgentForBackup(context: Application?) {
         handler = createHandler("did:prism:asldkfjalsdf")
-        publishPrismHandler = createPublisher(api, Url("http://localhost:9083/cloud-agent"))
+        publishPrismHandler = createPublisher(api, Url("http://10.0.23.109:32101/cloud-agent"))
         agent = createAgent(handler, publishPrismHandler)
 
         CoroutineScope(Dispatchers.Default).launch {

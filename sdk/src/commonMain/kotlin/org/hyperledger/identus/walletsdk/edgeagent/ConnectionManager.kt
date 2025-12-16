@@ -5,7 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -25,7 +24,7 @@ import org.hyperledger.identus.walletsdk.edgeagent.mediation.MediationHandler
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.ProtocolType
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.issueCredential.IssueCredential
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.revocation.RevocationNotification
-import java.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 interface ConnectionManager : ConnectionsManager, DIDCommConnection {
 
@@ -114,7 +113,7 @@ class ConnectionManagerImpl(
                             processMessages(array)
                         }
                         // Wait for the specified request interval before fetching new messages
-                        delay(Duration.ofSeconds(requestInterval.toLong()).toMillis())
+                        delay(requestInterval.seconds.inWholeMilliseconds)
                     }
                 }
             }

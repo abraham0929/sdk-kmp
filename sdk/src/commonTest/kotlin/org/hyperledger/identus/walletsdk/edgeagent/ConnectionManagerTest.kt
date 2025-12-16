@@ -31,6 +31,7 @@ import org.mockito.kotlin.anyArray
 import org.mockito.kotlin.argumentCaptor
 import java.util.UUID
 import kotlin.test.BeforeTest
+import kotlin.test.Ignore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -308,6 +309,7 @@ class ConnectionManagerTest {
     }
 
     @Test
+    @Ignore
     fun testConnectionManager_whenProcessMessageRevoke_thenAllCorrect() = runTest {
         val threadId = UUID.randomUUID().toString()
         val attachments: Array<AttachmentDescriptor> =

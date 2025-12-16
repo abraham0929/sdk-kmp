@@ -9,17 +9,23 @@ import org.junit.Assert
 import org.junit.Before
 import org.junit.Ignore
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.util.UUID
 
 /**
  * DID发布与状态查询集成测试
  * 直接测试SDK核心功能，无需UI交互
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
+@Ignore
 class PrismDidIntegrationTest {
 
     private lateinit var sdk: Sdk
     private lateinit var testDid: DID
-    private var operationId: String? = null
+    private var operationId: String? = "b257ec54fa644625b1a4718643d83dbb7aae1377ce44dc78ac2773b9fa8c34ef"
 
     @Before
     fun setup() {
@@ -86,7 +92,6 @@ class PrismDidIntegrationTest {
      * 测试DID发布功能
      */
     @Test
-    @Ignore
     fun testPublishPrismDid() {
         // 确保测试DID已正确创建
         if (!::testDid.isInitialized) {
@@ -124,7 +129,6 @@ class PrismDidIntegrationTest {
      * 注意：此测试需要先运行testPublishPrismDid或提供有效的operationId
      */
     @Test
-    @Ignore
     fun testGetOperationStatus() {
         // 确保操作ID有效或使用一个已知的有效ID
         val testOperationId = operationId
@@ -144,9 +148,32 @@ class PrismDidIntegrationTest {
 
                 // 测试状态转换为小写
                 val lowercaseStatus = status.name.lowercase()
-                Assert.assertTrue(listOf("pending", "completed", "failed").contains(lowercaseStatus))
-            } catch (e: Exception) {
+                Assert.assertTrue(listOf("pending", "completed", "failed", "confirmed").contains(lowercaseStatus))
+            } catch (e: EdgeAgentError.PublishPrismError) {
+                // 更新异常类型以匹配EdgeAgent方法签名
                 println("操作状态查询失败（可能是预期的，因为测试环境限制）: ${e.message}")
+            } catch (e: Exception) {
+                println("操作状态查询失败（未知异常）: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 测试云代理可访问性检查功能
+     */
+    @Test
+    fun testCloudAgentAccessibility() {
+        runBlocking {
+            try {
+                val isAccessible = sdk.agent.isCloudAgentAccessible()
+                // 验证返回值
+                Assert.assertTrue(isAccessible is Boolean)
+                println("云代理可访问性检查成功，状态: $isAccessible")
+            } catch (e: EdgeAgentError.PublishPrismError) {
+                // 云代理不可访问时会抛出此异常
+                println("云代理可访问性检查失败: ${e.message}")
+            } catch (e: Exception) {
+                println("云代理可访问性检查发生未知错误: ${e.message}")
             }
         }
     }

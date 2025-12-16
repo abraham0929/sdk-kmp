@@ -24,7 +24,7 @@ class TextFieldLogger(private val textView: TextView) : Logger {
         spannableText.setSpan(ForegroundColorSpan(Color.RED), 0, spannableText.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         logs.add(spannableText)
         textView.text = ""
-        logs.reversed().forEach {
+        logs.asReversed().forEach {
             textView.append(it)
         }
     }
@@ -34,7 +34,7 @@ class TextFieldLogger(private val textView: TextView) : Logger {
         spannableText.setSpan(ForegroundColorSpan(Color.YELLOW), 0, spannableText.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         logs.add(spannableText)
         textView.text = ""
-        logs.reversed().forEach {
+        logs.asReversed().forEach {
             textView.append(it)
         }
     }
@@ -44,7 +44,7 @@ class TextFieldLogger(private val textView: TextView) : Logger {
         spannableText.setSpan(ForegroundColorSpan(Color.BLUE), 0, spannableText.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         logs.add(spannableText)
         textView.text = ""
-        logs.reversed().forEach {
+        logs.asReversed().forEach {
             textView.append(it)
         }
     }
