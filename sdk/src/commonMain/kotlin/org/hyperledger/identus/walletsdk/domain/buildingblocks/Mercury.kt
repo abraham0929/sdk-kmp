@@ -2,7 +2,6 @@ package org.hyperledger.identus.walletsdk.domain.buildingblocks
 
 import org.hyperledger.identus.walletsdk.domain.models.MercuryError
 import org.hyperledger.identus.walletsdk.domain.models.Message
-import kotlin.jvm.Throws
 
 /**
  * Mercury is a powerful and flexible library for working with decentralized identifiers and secure communications
@@ -41,7 +40,7 @@ interface Mercury {
      * @throws [MercuryError.NoDIDReceiverSetError] if DIDReceiver is invalid.
      * @throws [MercuryError.NoDIDSenderSetError] if DIDSender is invalid.
      */
-    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class)
+    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class,MercuryError.NoValidServiceFoundError::class)
     suspend fun sendMessage(message: Message): ByteArray?
 
     /**

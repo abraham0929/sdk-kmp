@@ -98,8 +98,9 @@ constructor(
      * @return The response data
      * @throws [MercuryError.NoDIDReceiverSetError] if DIDReceiver is invalid.
      * @throws [MercuryError.NoDIDSenderSetError] if DIDSender is invalid.
+     * @throws [MercuryError.NoValidServiceFoundError] if no valid service is found for the receiver DID.
      */
-    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class)
+    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class,MercuryError.NoValidServiceFoundError::class)
     override suspend fun sendMessage(message: Message): ByteArray? {
         if (message.to !is DID) {
             throw MercuryError.NoDIDReceiverSetError()
@@ -179,6 +180,7 @@ constructor(
      * @param message The message to send
      * @return The response message object or null
      */
+    @Throws(MercuryError::class)
     override suspend fun sendMessageParseResponse(message: Message): Message? {
         val msg = sendMessage(message)
         msg?.let {
@@ -255,30 +257,43 @@ constructor(
      */
     @Throws(MercuryError.NoValidServiceFoundError::class)
     private suspend fun makeRequest(uri: String?, message: String): ByteArray? {
-        if (uri !is String) {
-            throw MercuryError.NoValidServiceFoundError()
+        if (uri.isNullOrBlank()) {
+            throw MercuryError.NoValidServiceFoundError("Invalid or empty URI provided")
         }
 
-        val result = api.request(
-            HttpMethod.Post.value,
-            uri,
-            emptyArray(),
-            arrayOf(KeyValue(HttpHeaders.ContentType, Typ.Encrypted.typ)),
-            message
-        )
-        if (result.status >= 400) {
+        val result = try {
+            api.request(
+                HttpMethod.Post.value,
+                uri,
+                emptyArray(),
+                arrayOf(KeyValue(HttpHeaders.ContentType, Typ.Encrypted.typ)),
+                message
+            )
+        } catch (e: Exception) {
+            throw MercuryError.NoValidServiceFoundError("Network request failed: ${e.message}")
+        }
+        // 2. HTTP状态码检查
+        if (result.status !in 200..299) {
             logger.error(
-                "Calling api result in ${result.status} error",
+                "API call failed with status ${result.status}",
                 arrayOf(
                     Metadata.PublicMetadata("statusCode", "${result.status}"),
                     Metadata.PublicMetadata("uri", uri),
-                    Metadata.PrivateMetadata("body", message)
+                    Metadata.PrivateMetadata("response", result.jsonString)
                 )
             )
-        } else {
-            logger.info("Calling api result in ${result.status} success")
+            throw MercuryError.NoValidServiceFoundError("API returned error status: ${result.status}")
         }
-        return result.jsonString.toByteArray()
+        // 3. 成功响应
+        logger.info(
+            "API call succeeded",
+            arrayOf(
+                Metadata.PublicMetadata("statusCode", "${result.status}"),
+                Metadata.PublicMetadata("uri", uri)
+            )
+        )
+        // 4. 返回数据
+        return result.jsonString.toByteArray(Charsets.UTF_8)
     }
 
     /**
