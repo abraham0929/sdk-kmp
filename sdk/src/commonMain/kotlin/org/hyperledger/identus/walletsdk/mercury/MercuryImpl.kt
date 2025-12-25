@@ -182,11 +182,28 @@ constructor(
      */
     @Throws(MercuryError::class)
     override suspend fun sendMessageParseResponse(message: Message): Message? {
-        val msg = sendMessage(message)
+        val msg = try {
+            sendMessage(message)
+        } catch (e: MercuryError) {
+            logger.error("Error sending message: ${e.message}", arrayOf(
+                Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"message",message.toJsonString(),LogLevel.DEBUG)
+            )
+            )
+            throw e
+        }
+        
         msg?.let {
             val msgString = String(msg)
             if (msgString != "null" && msgString != "") {
-                return unpackMessage(msgString)
+                return try {
+                    unpackMessage(msgString)
+                } catch (e: Exception) {
+                    logger.error("Error unpacking message response: ${e.message}", arrayOf(
+                        Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"response",msgString,LogLevel.DEBUG),
+                        Metadata.PublicMetadata("error", e.toString())
+                    ))
+                    null
+                }
             }
         }
         return null
@@ -237,7 +254,8 @@ constructor(
                 arrayOf(
                     Metadata.PublicMetadata("statusCode", "${result.status}"),
                     Metadata.PublicMetadata("uri", service.serviceEndpoint.uri),
-                    Metadata.PrivateMetadata("body", message)
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"body",message,LogLevel.DEBUG),
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"response",result.jsonString,LogLevel.DEBUG)
                 )
             )
         } else {
@@ -279,7 +297,7 @@ constructor(
                 arrayOf(
                     Metadata.PublicMetadata("statusCode", "${result.status}"),
                     Metadata.PublicMetadata("uri", uri),
-                    Metadata.PrivateMetadata("response", result.jsonString)
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"response",result.jsonString,LogLevel.DEBUG)
                 )
             )
             throw MercuryError.NoValidServiceFoundError("API returned error status: ${result.status}")
