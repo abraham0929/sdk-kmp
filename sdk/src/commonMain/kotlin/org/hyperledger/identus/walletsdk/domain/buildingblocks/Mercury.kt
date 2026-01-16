@@ -40,7 +40,7 @@ interface Mercury {
      * @throws [MercuryError.NoDIDReceiverSetError] if DIDReceiver is invalid.
      * @throws [MercuryError.NoDIDSenderSetError] if DIDSender is invalid.
      */
-    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class,MercuryError.NoValidServiceFoundError::class)
+    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class, MercuryError.NoValidServiceFoundError::class)
     suspend fun sendMessage(message: Message): ByteArray?
 
     /**

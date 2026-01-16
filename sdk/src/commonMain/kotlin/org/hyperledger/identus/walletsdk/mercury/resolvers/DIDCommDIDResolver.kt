@@ -57,7 +57,7 @@ class DIDCommDIDResolver(val castor: Castor) : DIDDocResolver {
                 }
 
                 methods.forEach { method ->
-                    val curve = DIDDocument.VerificationMethod.getCurveByType(method.type)
+                    val curve = extractCurveFromPublicKey(method)
 
                     if (curve === Curve.ED25519) {
                         authentications.add(method.id.string())
@@ -142,5 +142,43 @@ class DIDCommDIDResolver(val castor: Castor) : DIDDocResolver {
                 )
             )
         }
+    }
+    private fun extractCurveFromPublicKey(method: DIDDocument.VerificationMethod): Curve {
+        // 首先尝试从 publicKeyJwk 的 crv 字段获取曲线
+        if (method.publicKeyJwk != null) {
+            val crv = method.publicKeyJwk!!["crv"]
+            if (crv != null) {
+                return when (crv.lowercase()) {
+                    "ed25519" -> Curve.ED25519
+                    "x25519" -> Curve.X25519
+                    "secp256k1" -> Curve.SECP256K1
+                    else -> throw CastorError.InvalidKeyError()
+                }
+            }
+        }
+
+        // 如果没有JWK，尝试从 publicKeyMultibase 解码后推断曲线
+        if (method.publicKeyMultibase != null) {
+            val keyBytes = MultiBase.decode(method.publicKeyMultibase)
+            val (_, decodedBytes) = if (keyBytes.size > 2) {
+                fromMulticodec(keyBytes)
+            } else {
+                Pair(null, keyBytes)
+            }
+
+            // 根据字节长度推断曲线
+            return when (decodedBytes.size) {
+                32 -> Curve.ED25519 // Ed25519 keys are typically 32 bytes
+                33 -> Curve.X25519 // X25519 keys are typically 32 bytes but may have prefix
+                33, 65 -> Curve.SECP256K1 // Compressed (33) or uncompressed (65) secp256k1
+                else -> {
+                    // 如果无法从长度判断，使用原始方法作为后备
+                    DIDDocument.VerificationMethod.getCurveByType(method.type)
+                }
+            }
+        }
+
+        // 如果都失败了，回退到原来的方法
+        return DIDDocument.VerificationMethod.getCurveByType(method.type)
     }
 }

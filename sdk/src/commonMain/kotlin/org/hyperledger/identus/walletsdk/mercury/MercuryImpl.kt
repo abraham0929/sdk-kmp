@@ -100,7 +100,7 @@ constructor(
      * @throws [MercuryError.NoDIDSenderSetError] if DIDSender is invalid.
      * @throws [MercuryError.NoValidServiceFoundError] if no valid service is found for the receiver DID.
      */
-    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class,MercuryError.NoValidServiceFoundError::class)
+    @Throws(MercuryError.NoDIDReceiverSetError::class, MercuryError.NoDIDSenderSetError::class, MercuryError.NoValidServiceFoundError::class)
     override suspend fun sendMessage(message: Message): ByteArray? {
         if (message.to !is DID) {
             throw MercuryError.NoDIDReceiverSetError()
@@ -185,23 +185,30 @@ constructor(
         val msg = try {
             sendMessage(message)
         } catch (e: MercuryError) {
-            logger.error("Error sending message: ${e.message}", arrayOf(
-                Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"message",message.toJsonString(),LogLevel.DEBUG)
-            )
+            logger.error(
+                "Error sending message: ${e.message}",
+                arrayOf(
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY, "message", message.toJsonString(), LogLevel.DEBUG),
+                    Metadata.PublicMetadata("message", message.toJsonString())
+                )
             )
             throw e
         }
-        
+
         msg?.let {
             val msgString = String(msg)
             if (msgString != "null" && msgString != "") {
                 return try {
                     unpackMessage(msgString)
                 } catch (e: Exception) {
-                    logger.error("Error unpacking message response: ${e.message}", arrayOf(
-                        Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"response",msgString,LogLevel.DEBUG),
-                        Metadata.PublicMetadata("error", e.toString())
-                    ))
+                    logger.error(
+                        "Error unpacking message response: ${e.message}",
+                        arrayOf(
+                            Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY, "response", msgString, LogLevel.DEBUG),
+                            Metadata.PublicMetadata("response", msgString),
+                            Metadata.PublicMetadata("error", e.toString())
+                        )
+                    )
                     null
                 }
             }
@@ -254,8 +261,11 @@ constructor(
                 arrayOf(
                     Metadata.PublicMetadata("statusCode", "${result.status}"),
                     Metadata.PublicMetadata("uri", service.serviceEndpoint.uri),
-                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"body",message,LogLevel.DEBUG),
-                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"response",result.jsonString,LogLevel.DEBUG)
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY, "body", message, LogLevel.DEBUG),
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY, "response", result.jsonString, LogLevel.DEBUG),
+                    Metadata.PublicMetadata("body", message),
+                    Metadata.PublicMetadata("response", result.jsonString),
+
                 )
             )
         } else {
@@ -297,7 +307,8 @@ constructor(
                 arrayOf(
                     Metadata.PublicMetadata("statusCode", "${result.status}"),
                     Metadata.PublicMetadata("uri", uri),
-                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY,"response",result.jsonString,LogLevel.DEBUG)
+                    Metadata.PrivateMetadataByLevel(category = LogComponent.MERCURY, "response", result.jsonString, LogLevel.DEBUG),
+                    Metadata.PublicMetadata("response", result.jsonString),
                 )
             )
             throw MercuryError.NoValidServiceFoundError("API returned error status: ${result.status}")
