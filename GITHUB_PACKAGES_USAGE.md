@@ -92,7 +92,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("org.hyperledger.identus:sdk:3.0.0-fork.10")
+                implementation("org.hyperledger.identus:sdk:3.0.0-fork.14")
             }
         }
     }
@@ -103,9 +103,9 @@ kotlin {
 
 ```kotlin
 dependencies {
-    implementation("org.hyperledger.identus:sdk-android-release:3.0.0-fork.10")
+    implementation("org.hyperledger.identus:sdk-android-release:3.0.0-fork.14")
     // 或者使用 debug 版本
-    // implementation("org.hyperledger.identus:sdk-android-debug:3.0.0-fork.10")
+    // implementation("org.hyperledger.identus:sdk-android-debug:3.0.0-fork.14")
 }
 ```
 
@@ -113,7 +113,7 @@ dependencies {
 
 ```kotlin
 dependencies {
-    implementation("org.hyperledger.identus:sdk-jvm:3.0.0-fork.10")
+    implementation("org.hyperledger.identus:sdk-jvm:3.0.0-fork.14")
 }
 ```
 
@@ -138,7 +138,7 @@ dependencies {
 ## 6. 可用的版本
 
 当前已发布版本：
-- `3.0.0-fork.8` (最新)
+- `3.0.0-fork.14` (最新)
 
 你可以在 GitHub 仓库的 Packages 页面查看所有可用版本：
 https://github.com/abraham0929/sdk-kmp/packages
@@ -149,7 +149,7 @@ https://github.com/abraham0929/sdk-kmp/packages
 
 1. 更新 `gradle.properties` 中的版本号：
    ```properties
-   version = 3.0.0-fork.11
+   version = 3.0.0-fork.15
    ```
 
 2. 运行发布命令：
