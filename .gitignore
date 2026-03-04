@@ -18,3 +18,4 @@ dependinces.log
 node_modules
 megalinter-reports
 tests/end-to-end/target
+.kotlin/errors/

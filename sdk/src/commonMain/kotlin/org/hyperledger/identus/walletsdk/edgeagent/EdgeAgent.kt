@@ -58,7 +58,7 @@ import org.hyperledger.identus.walletsdk.domain.models.Api
 import org.hyperledger.identus.walletsdk.domain.models.ApiImpl
 import org.hyperledger.identus.walletsdk.domain.models.ApolloError
 import org.hyperledger.identus.walletsdk.domain.models.AttachmentData
-import org.hyperledger.identus.walletsdk.domain.models.AttachmentData.AttachmentBase64
+import org.hyperledger.identus.walletsdk.domain.models.AttachmentDataSerializer
 import org.hyperledger.identus.walletsdk.domain.models.AttachmentDescriptor
 import org.hyperledger.identus.walletsdk.domain.models.Credential
 import org.hyperledger.identus.walletsdk.domain.models.CredentialOperationsOptions
@@ -742,7 +742,7 @@ open class EdgeAgent {
                     AttachmentDescriptor(
                         mediaType = ContentType.Application.Json.toString(),
                         format = CredentialType.JWT.type,
-                        data = AttachmentBase64(jwtString.base64UrlEncoded)
+                        data = AttachmentData.AttachmentBase64(jwtString.base64UrlEncoded)
                     )
                 return RequestCredential(
                     from = offer.to,
@@ -785,7 +785,7 @@ open class EdgeAgent {
                     AttachmentDescriptor(
                         mediaType = ContentType.Application.Json.toString(),
                         format = CredentialType.ANONCREDS_REQUEST.type,
-                        data = AttachmentBase64(json.base64UrlEncoded)
+                        data = AttachmentData.AttachmentBase64(json.base64UrlEncoded)
                     )
 
                 RequestCredential(
@@ -1135,7 +1135,7 @@ open class EdgeAgent {
         val attachmentDescriptor =
             AttachmentDescriptor(
                 mediaType = mediaType,
-                data = AttachmentBase64(presentationString.base64UrlEncoded)
+                data = AttachmentData.AttachmentBase64(presentationString.base64UrlEncoded)
             )
 
         val fromDID = request.to ?: createNewPeerDID(updateMediator = true)
@@ -1182,7 +1182,7 @@ open class EdgeAgent {
                 attachmentDescriptor = AttachmentDescriptor(
                     mediaType = "application/json",
                     format = CredentialType.PRESENTATION_EXCHANGE_DEFINITIONS.type,
-                    data = AttachmentBase64(presentationDefinitionRequest.base64UrlEncoded)
+                    data = AttachmentData.AttachmentBase64(presentationDefinitionRequest.base64UrlEncoded)
                 )
             }
 
@@ -1197,7 +1197,7 @@ open class EdgeAgent {
                 attachmentDescriptor = AttachmentDescriptor(
                     mediaType = "application/json",
                     format = CredentialType.PRESENTATION_EXCHANGE_DEFINITIONS.type,
-                    data = AttachmentBase64(presentationDefinitionRequest.base64UrlEncoded)
+                    data = AttachmentData.AttachmentBase64(presentationDefinitionRequest.base64UrlEncoded)
                 )
             }
 
@@ -1251,7 +1251,7 @@ open class EdgeAgent {
                 val attachmentDescriptor = AttachmentDescriptor(
                     mediaType = "application/json",
                     format = CredentialType.PRESENTATION_EXCHANGE_SUBMISSION.type,
-                    data = AttachmentBase64(presentationSubmissionProof.base64UrlEncoded)
+                    data = AttachmentData.AttachmentBase64(presentationSubmissionProof.base64UrlEncoded)
                 )
 
                 val fromDID = requestPresentation.to ?: createNewPeerDID(updateMediator = true)
@@ -1274,7 +1274,7 @@ open class EdgeAgent {
                 val attachmentDescriptor = AttachmentDescriptor(
                     mediaType = "application/json",
                     format = CredentialType.PRESENTATION_EXCHANGE_SUBMISSION.type,
-                    data = AttachmentBase64(presentationSubmissionProof.base64UrlEncoded)
+                    data = AttachmentData.AttachmentBase64(presentationSubmissionProof.base64UrlEncoded)
                 )
                 val fromDID = requestPresentation.to ?: createNewPeerDID(updateMediator = true)
                 return Presentation(
@@ -1558,13 +1558,16 @@ open class EdgeAgent {
 
         val attachmentId = attachmentJsonObject["id"]!!.jsonPrimitive.content
         val attachmentMediaType = attachmentJsonObject["media_type"]!!.jsonPrimitive.content
-        val attachmentData = attachmentJsonObject["data"]!!.jsonObject["json"]!!.toString()
+        val attachmentData = Json { ignoreUnknownKeys = true }.decodeFromJsonElement(
+            AttachmentDataSerializer,
+            attachmentJsonObject["data"]!!
+        )
         val attachmentFormat = attachmentJsonObject["format"]!!.jsonPrimitive.content
 
         val attachmentDescriptor = AttachmentDescriptor(
             id = attachmentId,
             mediaType = attachmentMediaType,
-            data = AttachmentData.AttachmentJsonData(attachmentData),
+            data = attachmentData,
             format = attachmentFormat
         )
 

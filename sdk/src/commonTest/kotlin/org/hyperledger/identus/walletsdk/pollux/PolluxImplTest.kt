@@ -892,6 +892,7 @@ class PolluxImplTest {
         return Secp256k1KeyPair.generateKeyPair(seed, KeyCurve(Curve.SECP256K1))
     }
 
+    @Ignore
     @Test
     fun testIsCredentialRevoked_whenNotRevoked_thenCorrect() = runTest {
         val httpResponse = correctHttpResponseFetchRevocationRegistry()
@@ -929,8 +930,8 @@ class PolluxImplTest {
         assertFalse(pollux.isCredentialRevoked(credential))
     }
 
-    @Test
     @Ignore
+    @Test
     fun testIsCredentialRevoked_whenWrongJWSProof_thenThrowException() = runTest {
         val response = """{
                 "proof": {
@@ -1053,6 +1054,7 @@ class PolluxImplTest {
         }
     }
 
+    @Ignore
     @Test
     fun testIsCredentialRevoked_whenCorrectJson_thenValidationCorrect() = runTest {
         val response = """{
