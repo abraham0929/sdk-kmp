@@ -12,6 +12,7 @@ import anoncreds_uniffi.Prover
 import anoncreds_uniffi.Schema
 import anoncreds_uniffi.Verifier
 import com.apicatalog.jsonld.JsonLd
+import com.apicatalog.jsonld.JsonLdOptions
 import com.apicatalog.jsonld.document.JsonDocument
 import com.apicatalog.rdf.Rdf
 import com.nimbusds.jose.JWSAlgorithm
@@ -110,6 +111,8 @@ import org.hyperledger.identus.walletsdk.pollux.models.SDJWTCredential
 import org.hyperledger.identus.walletsdk.pollux.models.VerificationKeyType
 import org.hyperledger.identus.walletsdk.pollux.models.W3CCredential
 import org.hyperledger.identus.walletsdk.pollux.utils.BitString
+import org.hyperledger.identus.walletsdk.pollux.utils.CustomHttpLoader
+import org.hyperledger.identus.walletsdk.pollux.utils.GlobalHttpLoader
 
 /**
  * Class representing the implementation of the Pollux interface.
@@ -543,7 +546,12 @@ open class PolluxImpl(
     private fun encode(data: String): String {
         val inputStream = ByteArrayInputStream(data.toByteArray())
         val document = JsonDocument.of(inputStream)
-        val rdfDataset = JsonLd.toRdf(document).get()
+
+        val rdfDataset = JsonLd.toRdf(document)
+                            .options(JsonLdOptions().apply {
+                                documentLoader = GlobalHttpLoader.instance
+                            })
+                            .get()
         val normalized = RdfNormalize.normalize(rdfDataset)
         val writer = StringWriter()
         val rdfWriter = Rdf.createWriter(com.apicatalog.jsonld.http.media.MediaType.N_QUADS, writer)
