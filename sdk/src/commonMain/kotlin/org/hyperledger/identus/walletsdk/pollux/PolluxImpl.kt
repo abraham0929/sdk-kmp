@@ -111,8 +111,8 @@ import org.hyperledger.identus.walletsdk.pollux.models.SDJWTCredential
 import org.hyperledger.identus.walletsdk.pollux.models.VerificationKeyType
 import org.hyperledger.identus.walletsdk.pollux.models.W3CCredential
 import org.hyperledger.identus.walletsdk.pollux.utils.BitString
-import org.hyperledger.identus.walletsdk.pollux.utils.CustomHttpLoader
-import org.hyperledger.identus.walletsdk.pollux.utils.GlobalHttpLoader
+import org.hyperledger.identus.walletsdk.pollux.utils.CachedDocumentLoader
+
 
 /**
  * Class representing the implementation of the Pollux interface.
@@ -124,7 +124,11 @@ open class PolluxImpl(
     val apollo: Apollo,
     val castor: Castor,
     private val api: Api = ApiImpl(httpClient()),
-    private val logger: Logger = LoggerImpl(LogComponent.POLLUX)
+    private val logger: Logger = LoggerImpl(LogComponent.POLLUX),
+    private val documentLoader: com.apicatalog.jsonld.loader.DocumentLoader =
+        com.apicatalog.jsonld.loader.HttpLoader(
+            org.hyperledger.identus.walletsdk.pollux.utils.CustomHttpClient()
+        )
 ) : Pollux {
 
     /**
@@ -549,7 +553,7 @@ open class PolluxImpl(
 
         val rdfDataset = JsonLd.toRdf(document)
                             .options(JsonLdOptions().apply {
-                                documentLoader = GlobalHttpLoader.instance
+                                documentLoader = this@PolluxImpl.documentLoader
                             })
                             .get()
         val normalized = RdfNormalize.normalize(rdfDataset)
