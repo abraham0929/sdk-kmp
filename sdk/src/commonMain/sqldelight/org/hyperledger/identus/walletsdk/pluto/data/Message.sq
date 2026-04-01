@@ -79,4 +79,5 @@ SELECT *
 FROM Message
 WHERE type IN ?
 AND createdTime > ?
+AND isReceived = 1
 ORDER BY createdTime ASC;
