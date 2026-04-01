@@ -1127,9 +1127,9 @@ open class PolluxImpl(
                             didDocHolder.coreProperties.find { it::class == DIDDocument.Authentication::class }
                                 ?: throw PolluxError.VerificationUnsuccessful("Holder core properties must contain Authentication")
                         val ecPublicKeysHolder =
-                            extractEcPublicKeyFromVerificationMethod(authenticationMethodHolder)
+                            extractPublicKeysFromVerificationMethod(authenticationMethodHolder)
 
-                        if (!verifyJWTSignatureWithEcPublicKey(
+                        if (!verifyJWTSignatureWithPublicKey(
                                 verifiableCredential.id,
                                 ecPublicKeysHolder
                             )
@@ -1265,34 +1265,70 @@ open class PolluxImpl(
 
     internal fun verifyJWTSignatureWithEcPublicKey(
         jwtString: String,
-        ecPublicKeys: Array<ECPublicKey>
+        ecPublicKeys: Array<ECPublicKey>   // 保持原签名，向下兼容
     ): Boolean {
-        val jwtPartsIssuer = jwtString.split(".")
-        if (jwtPartsIssuer.size != 3) {
+        return verifyJWTSignatureWithPublicKey(jwtString, ecPublicKeys.map { it }.toTypedArray())
+    }
+
+    // 新增通用版本，支持 EC + Ed25519
+    internal fun verifyJWTSignatureWithPublicKey(
+        jwtString: String,
+        publicKeys: Array<java.security.PublicKey>
+    ): Boolean {
+        val jwtParts = jwtString.split(".")
+        if (jwtParts.size != 3) {
             throw PolluxError.InvalidJWTString("Invalid JWT string, must contain 3 parts.")
         }
-        val jwsObject =
-            SignedJWT(
-                Base64URL(jwtPartsIssuer[0]),
-                Base64URL(jwtPartsIssuer[1]),
-                Base64URL(jwtPartsIssuer[2])
-            )
-        val areVerified = ecPublicKeys.map { ecPublicKey ->
-            val verifiers = ECDSAVerifier(ecPublicKey)
-            val provider = BouncyCastleProviderSingleton.getInstance()
-            verifiers.jcaContext.provider = provider
 
-            jwsObject.verify(verifiers)
+        val areVerified = publicKeys.map { publicKey ->
+            when (publicKey) {
+                is ECPublicKey -> {
+                    // 原有 ECDSA 逻辑
+                    val jwsObject = SignedJWT(
+                        Base64URL(jwtParts[0]),
+                        Base64URL(jwtParts[1]),
+                        Base64URL(jwtParts[2])
+                    )
+                    val verifier = ECDSAVerifier(publicKey)
+                    val provider = BouncyCastleProviderSingleton.getInstance()
+                    verifier.jcaContext.provider = provider
+                    jwsObject.verify(verifier)
+                }
+
+                else -> {
+                    // Ed25519（以及未来其他曲线）：使用 JCA 直接验签
+                    try {
+                        val algorithm = when (publicKey.algorithm) {
+                            "Ed25519", "EdDSA" -> "Ed25519"
+                            else -> throw Exception("Unsupported key algorithm: ${publicKey.algorithm}")
+                        }
+
+                        // JWT 签名验证：payload = header.claims（原始 base64url 字符串）
+                        val signingInput = "${jwtParts[0]}.${jwtParts[1]}"
+                        val signature = Base64URL(jwtParts[2]).decode()
+
+                        val sig = java.security.Signature.getInstance(algorithm, BouncyCastleProvider())
+                        sig.initVerify(publicKey)
+                        sig.update(signingInput.toByteArray(Charsets.UTF_8))
+                        sig.verify(signature)
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+            }
         }
         return areVerified.find { it } ?: false
     }
 
-    override suspend fun extractEcPublicKeyFromVerificationMethod(coreProperty: DIDDocumentCoreProperty): Array<ECPublicKey> {
+    override suspend fun extractPublicKeysFromVerificationMethod(
+        coreProperty: DIDDocumentCoreProperty
+    ): Array<java.security.PublicKey> {
         val publicKeys = castor.getPublicKeysFromCoreProperties(arrayOf(coreProperty))
 
-        val ecPublicKeys = publicKeys.map { publicKey ->
+        return publicKeys.map { publicKey ->
             when (DIDDocument.VerificationMethod.getCurveByType(publicKey.getCurve())) {
                 Curve.SECP256K1 -> {
+                    // 原有逻辑不变
                     val kmmEcSecp = KMMECSecp256k1PublicKey.secp256k1FromBytes(publicKey.raw)
                     val x = BigInteger(1, kmmEcSecp.getCurvePoint().x)
                     val y = BigInteger(1, kmmEcSecp.getCurvePoint().y)
@@ -1301,19 +1337,34 @@ open class PolluxImpl(
                     val sp = ECNamedCurveTable.getParameterSpec(curveName)
                     val params: ECParameterSpec =
                         ECNamedCurveSpec(sp.name, sp.curve, sp.g, sp.n, sp.h)
-
                     val publicKeySpec = ECPublicKeySpec(ecPoint, params)
                     val keyFactory = KeyFactory.getInstance(EC, BouncyCastleProvider())
-                    keyFactory.generatePublic(publicKeySpec) as ECPublicKey
+                    keyFactory.generatePublic(publicKeySpec) as java.security.PublicKey
                 }
 
-                else -> {
-                    throw Exception("Key type not supported ${publicKey.getCurve()}")
+                Curve.ED25519 -> {
+                    // Ed25519：直接用 X509EncodedKeySpec 或 BouncyCastle 解析原始字节
+                    val keyFactory = KeyFactory.getInstance(
+                        "Ed25519",
+                        BouncyCastleProvider()
+                    )
+                    // publicKey.raw 是 32 字节的 Ed25519 原始公钥
+                    val edKeySpec = org.bouncycastle.asn1.x509.SubjectPublicKeyInfo(
+                        org.bouncycastle.asn1.x509.AlgorithmIdentifier(
+                            org.bouncycastle.asn1.edec.EdECObjectIdentifiers.id_Ed25519
+                        ),
+                        publicKey.raw
+                    )
+                    keyFactory.generatePublic(
+                        java.security.spec.X509EncodedKeySpec(edKeySpec.encoded)
+                    )
                 }
+
+                else -> throw Exception("Key type not supported: ${publicKey.getCurve()}")
             }
-        }
-        return ecPublicKeys.toTypedArray()
+        }.toTypedArray()
     }
+
 
     /**
      * Method to get the kId from the DID authentication property, Master key.

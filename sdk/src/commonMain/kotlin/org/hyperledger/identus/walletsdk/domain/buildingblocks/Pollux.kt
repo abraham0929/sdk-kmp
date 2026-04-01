@@ -7,7 +7,6 @@ import anoncreds_uniffi.CredentialOffer
 import anoncreds_uniffi.CredentialRequest
 import anoncreds_uniffi.CredentialRequestMetadata
 import anoncreds_uniffi.Schema
-import java.security.interfaces.ECPublicKey
 import kotlinx.serialization.json.JsonObject
 import org.hyperledger.identus.walletsdk.domain.models.AttachmentDescriptor
 import org.hyperledger.identus.walletsdk.domain.models.Credential
@@ -173,7 +172,7 @@ interface Pollux {
         options: PresentationSubmissionOptions
     ): Boolean
 
-    suspend fun extractEcPublicKeyFromVerificationMethod(coreProperty: DIDDocumentCoreProperty): Array<ECPublicKey>
+    suspend fun extractPublicKeysFromVerificationMethod(coreProperty: DIDDocumentCoreProperty): Array<java.security.PublicKey>
 
     suspend fun isCredentialRevoked(credential: Credential): Boolean
 }

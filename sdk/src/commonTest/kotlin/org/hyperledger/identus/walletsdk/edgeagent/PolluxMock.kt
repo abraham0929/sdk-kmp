@@ -19,7 +19,6 @@ import org.hyperledger.identus.walletsdk.edgeagent.protocols.proofOfPresentation
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.proofOfPresentation.PresentationSubmissionOptions
 import org.hyperledger.identus.walletsdk.pollux.models.CredentialRequest
 import org.hyperledger.identus.walletsdk.pollux.models.CredentialRequestMeta
-import java.security.interfaces.ECPublicKey
 
 class PolluxMock : Pollux {
 
@@ -104,7 +103,7 @@ class PolluxMock : Pollux {
         TODO("Not yet implemented")
     }
 
-    override suspend fun extractEcPublicKeyFromVerificationMethod(coreProperty: DIDDocumentCoreProperty): Array<ECPublicKey> {
+    override suspend fun extractPublicKeysFromVerificationMethod(coreProperty: DIDDocumentCoreProperty): Array<java.security.PublicKey> {
         TODO("Not yet implemented")
     }
 
