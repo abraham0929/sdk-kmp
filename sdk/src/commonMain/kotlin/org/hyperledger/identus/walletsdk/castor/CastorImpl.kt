@@ -176,10 +176,14 @@ constructor(
      * @return List<[PublicKey]>
      */
     override fun getPublicKeysFromCoreProperties(coreProperties: Array<DIDDocumentCoreProperty>): List<PublicKey> {
-        return coreProperties
-            .filterIsInstance<DIDDocument.Authentication>()
-            .flatMap { it.verificationMethods.toList() }
-            .mapNotNull { verificationMethod ->
+        return coreProperties.flatMap { property ->
+            val verificationMethods = when (property) {
+                is DIDDocument.Authentication -> property.verificationMethods.toList()
+                is DIDDocument.AssertionMethod -> property.verificationMethods.toList()
+                else -> emptyList()
+            }
+            
+            verificationMethods.mapNotNull { verificationMethod ->
                 when {
                     verificationMethod.publicKeyJwk != null -> {
                         extractPublicKeyFromJwk(verificationMethod.publicKeyJwk)
@@ -195,6 +199,7 @@ constructor(
                     else -> null
                 }
             }
+        }
     }
 
     private fun extractPublicKeyFromJwk(jwk: Map<String, String>): PublicKey? {

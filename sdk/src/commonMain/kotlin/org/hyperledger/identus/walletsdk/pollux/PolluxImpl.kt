@@ -45,6 +45,9 @@ import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.bouncycastle.asn1.edec.EdECObjectIdentifiers
+import org.bouncycastle.asn1.x509.AlgorithmIdentifier
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo
 import org.bouncycastle.jce.ECNamedCurveTable
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.jce.spec.ECNamedCurveSpec
@@ -112,6 +115,7 @@ import org.hyperledger.identus.walletsdk.pollux.models.VerificationKeyType
 import org.hyperledger.identus.walletsdk.pollux.models.W3CCredential
 import org.hyperledger.identus.walletsdk.pollux.utils.BitString
 import org.hyperledger.identus.walletsdk.pollux.utils.CachedDocumentLoader
+import java.security.Security
 
 
 /**
@@ -131,6 +135,12 @@ open class PolluxImpl(
         )
 ) : Pollux {
 
+
+    init {
+        if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
+            Security.addProvider(BouncyCastleProvider())
+        }
+    }
     /**
      * Parses a verifiable credential from the given data.
      *
@@ -1123,11 +1133,13 @@ open class PolluxImpl(
                         }
 
                         val didDocHolder = castor.resolveDID(verifiableCredential.issuer)
-                        val authenticationMethodHolder =
-                            didDocHolder.coreProperties.find { it::class == DIDDocument.Authentication::class }
-                                ?: throw PolluxError.VerificationUnsuccessful("Holder core properties must contain Authentication")
-                        val ecPublicKeysHolder =
-                            extractPublicKeysFromVerificationMethod(authenticationMethodHolder)
+                        
+                        // 凭证签发应使用 assertionMethod，而不是 authentication
+                        val assertionMethodHolder =
+                            didDocHolder.coreProperties.find { it::class == DIDDocument.AssertionMethod::class }
+                                ?: throw PolluxError.VerificationUnsuccessful("Issuer DID must contain AssertionMethod for credential verification")
+                        
+                        val ecPublicKeysHolder = extractPublicKeysFromVerificationMethod(assertionMethodHolder)
 
                         if (!verifyJWTSignatureWithPublicKey(
                                 verifiableCredential.id,
@@ -1140,6 +1152,7 @@ open class PolluxImpl(
                         // Now we are going to validate the requested fields with the provided credentials
                         val verifiableCredentialDescriptorPath =
                             DescriptorPath(Json.encodeToJsonElement(verifiableCredential))
+
                         val inputDescriptor =
                             inputDescriptors.find { it.id == descriptorItem.id }
                         if (inputDescriptor != null) {
@@ -1152,13 +1165,21 @@ open class PolluxImpl(
                                         var validClaim = false
                                         var reason = ""
                                         val paths = field.path
-                                        paths.forEach { path ->
+                                        // Use the first path that resolves to a non-null value
+                                        val resolvedPath = paths.firstOrNull { 
+                                            verifiableCredentialDescriptorPath.getValue(it) != null 
+                                        }
+                                        
+                                        listOfNotNull(resolvedPath).forEach { path ->
                                             val fieldValue =
                                                 verifiableCredentialDescriptorPath.getValue(path)
                                             if (fieldValue != null) {
                                                 if (field.filter != null) {
                                                     val filter: InputFieldFilter = field.filter
+                                                    var filterApplied = false
+                                                    
                                                     filter.pattern?.let { pattern ->
+                                                        filterApplied = true
                                                         val regexPattern = Regex(pattern)
                                                         if (regexPattern.matches(fieldValue.toString()) || fieldValue == pattern) {
                                                             validClaim = true
@@ -1169,6 +1190,7 @@ open class PolluxImpl(
                                                         }
                                                     }
                                                     filter.enum?.let { enum ->
+                                                        filterApplied = true
                                                         enum.forEach { predicate ->
                                                             if (fieldValue == predicate) {
                                                                 validClaim = true
@@ -1181,6 +1203,7 @@ open class PolluxImpl(
                                                         }
                                                     }
                                                     filter.const?.let { const ->
+                                                        filterApplied = true
                                                         const.forEach { constValue ->
                                                             if (fieldValue == constValue) {
                                                                 validClaim = true
@@ -1193,6 +1216,7 @@ open class PolluxImpl(
                                                         }
                                                     }
                                                     filter.value?.let { value ->
+                                                        filterApplied = true
                                                         if (value == fieldValue) {
                                                             validClaim = true
                                                             return@forEach
@@ -1201,9 +1225,16 @@ open class PolluxImpl(
                                                                 "Expected the $path field to be $value but got $fieldValue"
                                                         }
                                                     }
+                                                    
+                                                    // If filter exists but no constraints are set, just finding the value is enough
+                                                    if (!filterApplied) {
+                                                        validClaim = true
+                                                        return@forEach
+                                                    }
                                                 } else {
-                                                    reason =
-                                                        "Input field filter for ${field.name} is null"
+                                                    // No filter means just finding the value is enough
+                                                    validClaim = true
+                                                    return@forEach
                                                 }
                                             } else {
                                                 reason = "Field value for path $path is null"
@@ -1263,104 +1294,162 @@ open class PolluxImpl(
         return false
     }
 
-    internal fun verifyJWTSignatureWithEcPublicKey(
-        jwtString: String,
-        ecPublicKeys: Array<ECPublicKey>   // 保持原签名，向下兼容
-    ): Boolean {
-        return verifyJWTSignatureWithPublicKey(jwtString, ecPublicKeys.map { it }.toTypedArray())
+    // =========================================================
+    // 工具方法：将 JWT ECDSA 签名从 R||S 格式转换为 DER 格式
+    // JWT 规范 (RFC 7518) 规定 ECDSA 签名使用 R||S 拼接格式，
+    // 而 JCA 的 SHA256withECDSA 期望 ASN.1 DER 编码格式。
+    // =========================================================
+    private fun ecdsaRawToDer(rawSignature: ByteArray): ByteArray {
+        if (rawSignature.size != 64) {
+            logger.warning("Unexpected ECDSA signature length: ${rawSignature.size} bytes (expected 64)")
+        }
+        
+        val len = rawSignature.size / 2
+        var r = rawSignature.sliceArray(0 until len)
+        var s = rawSignature.sliceArray(len until rawSignature.size)
+
+        // Remove leading zeros but keep at least one byte
+        while (r.size > 1 && r[0] == 0x00.toByte()) r = r.sliceArray(1 until r.size)
+        while (s.size > 1 && s[0] == 0x00.toByte()) s = s.sliceArray(1 until s.size)
+
+        // Add leading zero if high bit is set (to keep positive in ASN.1)
+        if (r[0] < 0) r = byteArrayOf(0x00) + r
+        if (s[0] < 0) s = byteArrayOf(0x00) + s
+
+        // Build DER: SEQUENCE { INTEGER r, INTEGER s }
+        val derBytes = byteArrayOf(0x02.toByte(), r.size.toByte()) + r +
+                byteArrayOf(0x02.toByte(), s.size.toByte()) + s
+        return byteArrayOf(0x30.toByte(), derBytes.size.toByte()) + derBytes
     }
 
-    // 新增通用版本，支持 EC + Ed25519
+    internal fun verifyJWTSignatureWithEcPublicKey(
+        jwtString: String,
+        ecPublicKeys: Array<ECPublicKey>  // 保持原签名，向下兼容
+    ): Boolean {
+        // 修复：移除无意义的 map { it }，直接转换类型
+        return verifyJWTSignatureWithPublicKey(jwtString, ecPublicKeys as Array<java.security.PublicKey>)
+    }
+
     internal fun verifyJWTSignatureWithPublicKey(
         jwtString: String,
         publicKeys: Array<java.security.PublicKey>
     ): Boolean {
         val jwtParts = jwtString.split(".")
         if (jwtParts.size != 3) {
+            logger.error("Invalid JWT string format. Expected 3 parts, got ${jwtParts.size}")
             throw PolluxError.InvalidJWTString("Invalid JWT string, must contain 3 parts.")
         }
 
-        val areVerified = publicKeys.map { publicKey ->
-            when (publicKey) {
-                is ECPublicKey -> {
-                    // 原有 ECDSA 逻辑
-                    val jwsObject = SignedJWT(
-                        Base64URL(jwtParts[0]),
-                        Base64URL(jwtParts[1]),
-                        Base64URL(jwtParts[2])
-                    )
-                    val verifier = ECDSAVerifier(publicKey)
-                    val provider = BouncyCastleProviderSingleton.getInstance()
-                    verifier.jcaContext.provider = provider
-                    jwsObject.verify(verifier)
-                }
+        val headerBase64 = jwtParts[0]
+        val payloadBase64 = jwtParts[1]
+        val signatureBase64 = jwtParts[2]
 
-                else -> {
-                    // Ed25519（以及未来其他曲线）：使用 JCA 直接验签
-                    try {
-                        val algorithm = when (publicKey.algorithm) {
-                            "Ed25519", "EdDSA" -> "Ed25519"
-                            else -> throw Exception("Unsupported key algorithm: ${publicKey.algorithm}")
+        val signingInput = "$headerBase64.$payloadBase64".toByteArray(Charsets.UTF_8)
+
+        val signatureBytes = try {
+            Base64URL(signatureBase64).decode()
+        } catch (e: Exception) {
+            logger.error("Failed to decode JWT signature from Base64URL: ${e.message}")
+            return false
+        }
+
+        val jwtHeader = try {
+            SignedJWT.parse(jwtString).header
+        } catch (e: Exception) {
+            logger.error("Failed to parse JWT header from JWT string: ${e.message}")
+            return false
+        }
+        val declaredAlg = jwtHeader.algorithm
+        logger.debug("JWT alg: $declaredAlg, kid: ${jwtHeader.keyID}")
+        
+        val bcProvider = BouncyCastleProviderSingleton.getInstance()
+
+        return publicKeys.any { publicKey ->
+            try {
+                when (publicKey) {
+                    is ECPublicKey -> {
+                        if (declaredAlg != JWSAlgorithm.ES256K && declaredAlg != JWSAlgorithm.ES256) {
+                            return@any false
                         }
 
-                        // JWT 签名验证：payload = header.claims（原始 base64url 字符串）
-                        val signingInput = "${jwtParts[0]}.${jwtParts[1]}"
-                        val signature = Base64URL(jwtParts[2]).decode()
+                        val curveName = (publicKey.params as? ECNamedCurveSpec)?.name ?: "unknown"
+                        logger.debug("Trying EC key with curve: $curveName")
 
-                        val sig = java.security.Signature.getInstance(algorithm, BouncyCastleProvider())
+                        val jwsObject = SignedJWT(Base64URL(headerBase64), Base64URL(payloadBase64), Base64URL(signatureBase64))
+                        val verifier = ECDSAVerifier(publicKey)
+                        verifier.jcaContext.provider = bcProvider
+                        if (jwsObject.verify(verifier)) {
+                            return@any true
+                        }
+
+                        val derSignature = ecdsaRawToDer(signatureBytes)
+                        val sig = java.security.Signature.getInstance("SHA256withECDSA", bcProvider)
                         sig.initVerify(publicKey)
-                        sig.update(signingInput.toByteArray(Charsets.UTF_8))
-                        sig.verify(signature)
-                    } catch (e: Exception) {
-                        false
+                        sig.update(signingInput)
+                        if (sig.verify(derSignature)) {
+                            return@any true
+                        }
+                        logger.warning("ECDSA verification failed for curve $curveName")
+                    }
+
+                    else -> {
+                        if (publicKey.algorithm == "Ed25519" && declaredAlg == JWSAlgorithm.EdDSA) {
+                            val sig = java.security.Signature.getInstance("Ed25519", bcProvider)
+                            sig.initVerify(publicKey)
+                            sig.update(signingInput)
+                            if (sig.verify(signatureBytes)) {
+                                return@any true
+                            }
+                            logger.warning("Ed25519 verification failed")
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                logger.error("Verification exception for ${publicKey.algorithm}: ${e.message}")
             }
+            false
         }
-        return areVerified.find { it } ?: false
     }
-
     override suspend fun extractPublicKeysFromVerificationMethod(
         coreProperty: DIDDocumentCoreProperty
     ): Array<java.security.PublicKey> {
         val publicKeys = castor.getPublicKeysFromCoreProperties(arrayOf(coreProperty))
 
-        return publicKeys.map { publicKey ->
-            when (DIDDocument.VerificationMethod.getCurveByType(publicKey.getCurve())) {
-                Curve.SECP256K1 -> {
-                    // 原有逻辑不变
-                    val kmmEcSecp = KMMECSecp256k1PublicKey.secp256k1FromBytes(publicKey.raw)
-                    val x = BigInteger(1, kmmEcSecp.getCurvePoint().x)
-                    val y = BigInteger(1, kmmEcSecp.getCurvePoint().y)
-                    val ecPoint = ECPoint(x, y)
-                    val curveName = publicKey.getCurve()
-                    val sp = ECNamedCurveTable.getParameterSpec(curveName)
-                    val params: ECParameterSpec =
-                        ECNamedCurveSpec(sp.name, sp.curve, sp.g, sp.n, sp.h)
-                    val publicKeySpec = ECPublicKeySpec(ecPoint, params)
-                    val keyFactory = KeyFactory.getInstance(EC, BouncyCastleProvider())
-                    keyFactory.generatePublic(publicKeySpec) as java.security.PublicKey
-                }
+        return publicKeys.mapNotNull { publicKey ->
+            try {
+                when (DIDDocument.VerificationMethod.getCurveByType(publicKey.getCurve())) {
+                    Curve.SECP256K1 -> {
+                        val kmmEcSecp = KMMECSecp256k1PublicKey.secp256k1FromBytes(publicKey.raw)
+                        val x = BigInteger(1, kmmEcSecp.getCurvePoint().x)
+                        val y = BigInteger(1, kmmEcSecp.getCurvePoint().y)
+                        val ecPoint = ECPoint(x, y)
+                        val curveName = publicKey.getCurve()
+                        val sp = ECNamedCurveTable.getParameterSpec(curveName)
+                        val params: ECParameterSpec =
+                            ECNamedCurveSpec(sp.name, sp.curve, sp.g, sp.n, sp.h)
+                        val publicKeySpec = ECPublicKeySpec(ecPoint, params)
+                        val keyFactory = KeyFactory.getInstance(EC, BouncyCastleProvider())
+                        keyFactory.generatePublic(publicKeySpec) as java.security.PublicKey
+                    }
 
-                Curve.ED25519 -> {
-                    // Ed25519：直接用 X509EncodedKeySpec 或 BouncyCastle 解析原始字节
-                    val keyFactory = KeyFactory.getInstance(
-                        "Ed25519",
-                        BouncyCastleProvider()
-                    )
-                    // publicKey.raw 是 32 字节的 Ed25519 原始公钥
-                    val edKeySpec = org.bouncycastle.asn1.x509.SubjectPublicKeyInfo(
-                        org.bouncycastle.asn1.x509.AlgorithmIdentifier(
-                            org.bouncycastle.asn1.edec.EdECObjectIdentifiers.id_Ed25519
-                        ),
-                        publicKey.raw
-                    )
-                    keyFactory.generatePublic(
-                        java.security.spec.X509EncodedKeySpec(edKeySpec.encoded)
-                    )
-                }
+                    Curve.ED25519 -> {
+                        val keyFactory = KeyFactory.getInstance("Ed25519", BouncyCastleProvider())
+                        val publicKeySpec = java.security.spec.X509EncodedKeySpec(
+                            byteArrayOf(
+                                0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00
+                            ) + publicKey.raw
+                        )
+                        keyFactory.generatePublic(publicKeySpec)
+                    }
 
-                else -> throw Exception("Key type not supported: ${publicKey.getCurve()}")
+                    else -> {
+                        logger.warning("Unsupported key curve: ${publicKey.getCurve()}")
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                logger.error("Failed to generate public key for curve ${publicKey.getCurve()}: ${e.message}")
+                null
             }
         }.toTypedArray()
     }
