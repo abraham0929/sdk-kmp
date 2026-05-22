@@ -2,6 +2,7 @@ package org.hyperledger.identus.walletsdk.apollo.helpers
 
 import java.io.ByteArrayInputStream
 import java.util.zip.GZIPInputStream
+import java.io.ByteArrayOutputStream
 
 /**
  * Pads the current ByteArray with the specified padValue at the beginning,
