@@ -114,6 +114,7 @@ import org.hyperledger.identus.walletsdk.logger.LogComponent
 import org.hyperledger.identus.walletsdk.logger.Logger
 import org.hyperledger.identus.walletsdk.logger.LoggerImpl
 import org.hyperledger.identus.walletsdk.logger.Metadata
+import kotlin.time.TimeSource
 import org.hyperledger.identus.walletsdk.pluto.PlutoBackupTask
 import org.hyperledger.identus.walletsdk.pluto.PlutoRestoreTask
 import org.hyperledger.identus.walletsdk.pluto.models.backup.BackupV0_0_1
@@ -533,7 +534,9 @@ open class EdgeAgent {
         updateMediator: Boolean
     ) {
         if (updateMediator) {
+            val updateMark = TimeSource.Monotonic.markNow()
             updateMediatorWithDID(did)
+            logger.debug("[VP-Perf] registerPeerDID.updateMediatorWithDID ${updateMark.elapsedNow().inWholeMilliseconds}ms")
         }
         // The next logic is a bit tricky, so it's not forgotten this is a reminder.
         // The next few lines are needed because of DIDComm library, the library will need
@@ -1149,16 +1152,39 @@ open class EdgeAgent {
         )
     }
 
+    /**
+     * 预创建验证方 peer DID：解析对端 DID 取其 services，创建并向 mediator 注册一个新 peer DID。
+     * 逻辑与 [initiatePresentationRequest] 内部一致，供调用方提前（与其它准备工作并行）执行，
+     * 把 createNewPeerDID 的 mediator keylist 注册网络往返移出关键路径。返回的 DID 可作为
+     * [initiatePresentationRequest] 的 senderDID 复用。
+     */
+    suspend fun prepareVerifierPeerDID(toDID: DID): DID {
+        val didDocument = this.castor.resolveDID(toDID.toString())
+        return createNewPeerDID(services = didDocument.services, updateMediator = true)
+    }
+
     suspend fun initiatePresentationRequest(
         type: CredentialType,
         toDID: DID,
         presentationClaims: PresentationClaims,
         domain: String? = null,
-        challenge: String? = null
+        challenge: String? = null,
+        senderDID: DID? = null
     ) {
-        val didDocument = this.castor.resolveDID(toDID.toString())
-        val newPeerDID = createNewPeerDID(services = didDocument.services, updateMediator = true)
+        val newPeerDID: DID
+        if (senderDID != null) {
+            logger.debug("[VP-Perf] initiate.reuse prepared senderDID (skip createNewPeerDID)")
+            newPeerDID = senderDID
+        } else {
+            var prepMark = TimeSource.Monotonic.markNow()
+            val didDocument = this.castor.resolveDID(toDID.toString())
+            logger.debug("[VP-Perf] initiate.resolveDID(toDID) ${prepMark.elapsedNow().inWholeMilliseconds}ms")
+            prepMark = TimeSource.Monotonic.markNow()
+            newPeerDID = createNewPeerDID(services = didDocument.services, updateMediator = true)
+            logger.debug("[VP-Perf] initiate.createNewPeerDID(+updateMediator) ${prepMark.elapsedNow().inWholeMilliseconds}ms")
+        }
 
+        var perfMark = TimeSource.Monotonic.markNow()
         val presentationDefinitionRequest: String
         val attachmentDescriptor: AttachmentDescriptor
         when (type) {
@@ -1209,6 +1235,8 @@ open class EdgeAgent {
             }
         }
 
+        logger.debug("[VP-Perf] initiate.createPresentationDefinitionRequest ${perfMark.elapsedNow().inWholeMilliseconds}ms")
+
         val presentationRequest = RequestPresentation(
             body = RequestPresentation.Body(proofTypes = emptyArray()),
             attachments = arrayOf(attachmentDescriptor),
@@ -1217,7 +1245,9 @@ open class EdgeAgent {
             to = toDID,
             direction = Message.Direction.SENT
         )
+        perfMark = TimeSource.Monotonic.markNow()
         connectionManager.sendMessage(presentationRequest.makeMessage())
+        logger.debug("[VP-Perf] initiate.connectionManager.sendMessage ${perfMark.elapsedNow().inWholeMilliseconds}ms")
     }
 
     private suspend fun handlePresentationDefinitionRequest(
@@ -1242,11 +1272,13 @@ open class EdgeAgent {
                 val privateKey =
                     apollo.restorePrivateKey(storablePrivateKey.restorationIdentifier, storablePrivateKey.data)
 
+                val signMark = TimeSource.Monotonic.markNow()
                 val presentationSubmissionProof = pollux.createJWTPresentationSubmission(
                     presentationDefinitionRequest = presentationDefinitionRequestString,
                     credential = credential,
                     privateKey = privateKey,
                 )
+                logger.debug("[VP-Perf] createJWTPresentationSubmission(sign) ${signMark.elapsedNow().inWholeMilliseconds}ms")
 
                 val attachmentDescriptor = AttachmentDescriptor(
                     mediaType = "application/json",

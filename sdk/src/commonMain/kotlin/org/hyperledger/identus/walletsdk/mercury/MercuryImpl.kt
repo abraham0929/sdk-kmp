@@ -19,6 +19,7 @@ import org.hyperledger.identus.walletsdk.logger.Logger
 import org.hyperledger.identus.walletsdk.logger.LoggerImpl
 import org.hyperledger.identus.walletsdk.logger.Metadata
 import org.hyperledger.identus.walletsdk.mercury.forward.ForwardMessage
+import kotlin.time.TimeSource
 
 /**
  * The DIDCommProtocol interface provides methods for packing and unpacking DIDComm messages.
@@ -110,8 +111,12 @@ constructor(
             throw MercuryError.NoDIDSenderSetError()
         }
 
+        var perfMark = TimeSource.Monotonic.markNow()
         val document = castor.resolveDID(message.to.toString())
+        logger.debug("[VP-Perf] mercury.resolveDID(to) ${perfMark.elapsedNow().inWholeMilliseconds}ms")
+        perfMark = TimeSource.Monotonic.markNow()
         val packedMessage = packMessage(message)
+        logger.debug("[VP-Perf] mercury.packMessage(orig) ${perfMark.elapsedNow().inWholeMilliseconds}ms")
         val service = document.services.find { it.type.contains(DIDCOMM_MESSAGING) }
 
         getMediatorDID(service)?.let { mediatorDid ->
@@ -135,7 +140,9 @@ constructor(
                         )
                     )
                 )
+                perfMark = TimeSource.Monotonic.markNow()
                 val packedForwardMsg = packMessage(forwardMsg.makeMessage())
+                logger.debug("[VP-Perf] mercury.packMessage(forward) ${perfMark.elapsedNow().inWholeMilliseconds}ms")
                 logger.debug(
                     message = "Sending message with type ${message.piuri}",
                     metadata = arrayOf(
@@ -151,7 +158,10 @@ constructor(
                         )
                     )
                 )
-                return makeRequest(mediatorUri, packedForwardMsg)
+                perfMark = TimeSource.Monotonic.markNow()
+                val forwardResponse = makeRequest(mediatorUri, packedForwardMsg)
+                logger.debug("[VP-Perf] mercury.makeRequest(POST) ${perfMark.elapsedNow().inWholeMilliseconds}ms")
+                return forwardResponse
             } catch (e: Throwable) {
                 throw MercuryError.NoValidServiceFoundError(did = mediatorDid.toString())
             }

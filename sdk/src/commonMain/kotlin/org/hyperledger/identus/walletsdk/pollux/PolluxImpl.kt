@@ -116,6 +116,9 @@ import org.hyperledger.identus.walletsdk.pollux.models.W3CCredential
 import org.hyperledger.identus.walletsdk.pollux.utils.BitString
 import org.hyperledger.identus.walletsdk.pollux.utils.CachedDocumentLoader
 import java.security.Security
+import kotlin.time.TimeSource
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 
 /**
@@ -141,6 +144,17 @@ open class PolluxImpl(
             Security.addProvider(BouncyCastleProvider())
         }
     }
+
+    // 吊销状态列表短 TTL 缓存：避免连续验证时重复联网拉取同一份状态列表。
+    // 权衡：TTL 窗口内（30s）新发生的吊销可能暂未反映；为性能换取的可接受时延。
+    private data class CachedRevocationRegistry(
+        val json: String,
+        val mark: TimeSource.Monotonic.ValueTimeMark
+    )
+
+    private val revocationRegistryCache =
+        java.util.concurrent.ConcurrentHashMap<String, CachedRevocationRegistry>()
+    private val revocationRegistryCacheTtlMs = 30_000L
     /**
      * Parses a verifiable credential from the given data.
      *
@@ -601,6 +615,14 @@ open class PolluxImpl(
     }
 
     suspend fun fetchRevocationRegistry(credentialStatus: JWTVerifiableCredential.CredentialStatus): String {
+        val cacheKey = credentialStatus.statusListCredential
+        revocationRegistryCache[cacheKey]?.let { cached ->
+            if (cached.mark.elapsedNow().inWholeMilliseconds < revocationRegistryCacheTtlMs) {
+                logger.debug("[VP-Perf] fetchRevocationRegistry cache hit")
+                return cached.json
+            }
+            revocationRegistryCache.remove(cacheKey)
+        }
         val result = api.request(
             HttpMethod.Get.value,
             credentialStatus.statusListCredential,
@@ -609,6 +631,8 @@ open class PolluxImpl(
             null
         )
         if (result.status == 200) {
+            revocationRegistryCache[cacheKey] =
+                CachedRevocationRegistry(result.jsonString, TimeSource.Monotonic.markNow())
             return result.jsonString
         }
         throw UnknownError.SomethingWentWrongError("Fetch revocation registry failed: ${result.jsonString}")
@@ -1122,7 +1146,14 @@ open class PolluxImpl(
                     value?.let { vc ->
                         val verifiableCredential = JWTCredential.fromJwtString(vc as String)
 
-                        val isRevoked = isCredentialRevoked(verifiableCredential)
+                        // 并行执行两个相互独立的网络操作：吊销状态拉取 与 签发方 DID 解析
+                        var verifyMark = TimeSource.Monotonic.markNow()
+                        val (isRevoked, didDocHolder) = coroutineScope {
+                            val revokedDeferred = async { isCredentialRevoked(verifiableCredential) }
+                            val issuerDocDeferred = async { castor.resolveDID(verifiableCredential.issuer) }
+                            revokedDeferred.await() to issuerDocDeferred.await()
+                        }
+                        logger.debug("[VP-Perf] verify.revoked+resolveDID(并行) ${verifyMark.elapsedNow().inWholeMilliseconds}ms")
 
                         if (isRevoked) {
                             throw PolluxError.VerificationUnsuccessful("Provided credential is revoked")
@@ -1132,8 +1163,6 @@ open class PolluxImpl(
                             throw PolluxError.VerificationUnsuccessful("Invalid submission,")
                         }
 
-                        val didDocHolder = castor.resolveDID(verifiableCredential.issuer)
-                        
                         // 凭证签发应使用 assertionMethod，而不是 authentication
                         val assertionMethodHolder =
                             didDocHolder.coreProperties.find { it::class == DIDDocument.AssertionMethod::class }
@@ -1141,11 +1170,13 @@ open class PolluxImpl(
                         
                         val ecPublicKeysHolder = extractPublicKeysFromVerificationMethod(assertionMethodHolder)
 
-                        if (!verifyJWTSignatureWithPublicKey(
-                                verifiableCredential.id,
-                                ecPublicKeysHolder
-                            )
-                        ) {
+                        verifyMark = TimeSource.Monotonic.markNow()
+                        val signatureValid = verifyJWTSignatureWithPublicKey(
+                            verifiableCredential.id,
+                            ecPublicKeysHolder
+                        )
+                        logger.debug("[VP-Perf] verify.verifyJWTSignature ${verifyMark.elapsedNow().inWholeMilliseconds}ms")
+                        if (!signatureValid) {
                             throw PolluxError.VerificationUnsuccessful("Invalid presentation credential JWT Signature")
                         }
 
