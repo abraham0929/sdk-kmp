@@ -1,5 +1,6 @@
 package org.hyperledger.identus.walletsdk.edgeagent
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -94,19 +95,31 @@ class ConnectionManagerImpl(
                             return@forEach // Exit loop once the WebSocket endpoint is found
                         }
                     }
-
-                    // If a WebSocket service endpoint is found
-                    serviceEndpoint?.let { serviceEndpointUrl ->
-                        // Listen for unread messages on the WebSocket endpoint
-                        mediationHandler.listenUnreadMessages(
-                            serviceEndpointUrl
-                        ) { arrayMessages ->
-                            processMessages(arrayMessages)
-                        }
-                    }
                 }
-                // Fallback mechanism if no WebSocket service endpoint is available
-                if (serviceEndpoint == null) {
+
+                val liveModeEndpoint = serviceEndpoint
+                if (liveModeEndpoint != null) {
+                    // WebSocket live-mode 自动重连:listenUnreadMessages 会一直挂起到 socket 关闭。
+                    // 用循环重新建立连接,避免静默断开(socket 正常关闭、不抛异常)后消息投递永久停止。
+                    while (this.isActive) {
+                        try {
+                            mediationHandler.listenUnreadMessages(
+                                liveModeEndpoint
+                            ) { arrayMessages ->
+                                processMessages(arrayMessages)
+                            }
+                        } catch (e: CancellationException) {
+                            throw e // 协程被取消(stopConnection)时正常退出,不重连
+                        } catch (e: Throwable) {
+                            // 连接异常:吞掉并在下面按 requestInterval 退避后重连
+                            println("WebSocket live-mode disconnected, will reconnect: ${e.message}")
+                        }
+                        if (!this.isActive) break
+                        // socket 关闭或异常后,退避一个 requestInterval 再重连
+                        delay(requestInterval.seconds.inWholeMilliseconds)
+                    }
+                } else {
+                    // Fallback mechanism if no WebSocket service endpoint is available
                     while (this.isActive) {
                         // Continuously await and process new messages
                         awaitMessages().collect { array ->

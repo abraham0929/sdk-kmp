@@ -200,34 +200,39 @@ class BasicMediatorHandler(
                 socketTimeoutMillis = WEBSOCKET_TIMEOUT
             }
         }
-        if (serviceEndpointUri.contains("wss://") || serviceEndpointUri.contains("ws://")) {
-            client.webSocket(serviceEndpointUri) {
-                if (isActive) {
-                    val liveDeliveryMessage = Message(
-                        body = "{\"live_delivery\":true}",
-                        piuri = ProtocolType.LiveDeliveryChange.value,
-                        id = UUID.randomUUID().toString(),
-                        from = mediator?.hostDID,
-                        to = mediatorDID
-                    )
-                    val packedMessage = mercury.packMessage(liveDeliveryMessage)
-                    send(Frame.Text(packedMessage))
-                }
-                while (isActive) {
-                    try {
-                        for (frame in incoming) {
-                            if (frame is Frame.Text) {
-                                val messages =
-                                    handleReceivedMessagesFromSockets(frame.readText())
-                                onMessageCallback.onMessage(messages)
+        try {
+            if (serviceEndpointUri.contains("wss://") || serviceEndpointUri.contains("ws://")) {
+                client.webSocket(serviceEndpointUri) {
+                    if (isActive) {
+                        val liveDeliveryMessage = Message(
+                            body = "{\"live_delivery\":true}",
+                            piuri = ProtocolType.LiveDeliveryChange.value,
+                            id = UUID.randomUUID().toString(),
+                            from = mediator?.hostDID,
+                            to = mediatorDID
+                        )
+                        val packedMessage = mercury.packMessage(liveDeliveryMessage)
+                        send(Frame.Text(packedMessage))
+                    }
+                    while (isActive) {
+                        try {
+                            for (frame in incoming) {
+                                if (frame is Frame.Text) {
+                                    val messages =
+                                        handleReceivedMessagesFromSockets(frame.readText())
+                                    onMessageCallback.onMessage(messages)
+                                }
                             }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            continue
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        continue
                     }
                 }
             }
+        } finally {
+            // 关闭本次连接的 client,避免上层重连循环每次泄漏一个 HttpClient
+            client.close()
         }
     }
 
