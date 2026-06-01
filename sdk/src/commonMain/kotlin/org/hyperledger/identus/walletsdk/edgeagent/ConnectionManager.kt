@@ -4,11 +4,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.hyperledger.identus.apollo.base64.base64UrlDecoded
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Castor
 import org.hyperledger.identus.walletsdk.domain.buildingblocks.Mercury
@@ -71,6 +74,11 @@ class ConnectionManagerImpl(
 
     var fetchingMessagesJob: Job? = null
 
+    // live-mode 下 WS 推送与安全网 pickup 并行,可能在 ack 删库前重复投递同一条;
+    // 按消息 id 做有界去重,避免重复处理。
+    private val processedMessageIds = ArrayDeque<String>()
+    private val processedIdsMutex = Mutex()
+
     /**
      * Starts the process of fetching messages at a regular interval.
      *
@@ -99,24 +107,44 @@ class ConnectionManagerImpl(
 
                 val liveModeEndpoint = serviceEndpoint
                 if (liveModeEndpoint != null) {
-                    // WebSocket live-mode 自动重连:listenUnreadMessages 会一直挂起到 socket 关闭。
-                    // 用循环重新建立连接,避免静默断开(socket 正常关闭、不抛异常)后消息投递永久停止。
-                    while (this.isActive) {
-                        try {
-                            mediationHandler.listenUnreadMessages(
-                                liveModeEndpoint
-                            ) { arrayMessages ->
-                                processMessages(arrayMessages)
+                    // live-mode = WS 推送(低延迟)+ 并行的低频"安全网补拉"(可靠性兜底)。
+                    // mediator 只在收件方有已注册 live 连接的瞬间才推送,否则消息只存库不投递;
+                    // 而 listenUnreadMessages 不轮询,重连退避空档/静默断开/注册竞态期间到达的消息会永久丢失。
+                    // 安全网持续按 requestInterval 做 pickup,把任何未被推送的存库消息补回来。
+                    coroutineScope {
+                        // 子协程:安全网补拉,独立于 WS 重连,随整个 job 取消而退出
+                        launch {
+                            while (isActive) {
+                                try {
+                                    awaitMessages().collect { array ->
+                                        processMessages(array)
+                                    }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Throwable) {
+                                    // 单次补拉失败,下个周期重试
+                                }
+                                delay(requestInterval.seconds.inWholeMilliseconds)
                             }
-                        } catch (e: CancellationException) {
-                            throw e // 协程被取消(stopConnection)时正常退出,不重连
-                        } catch (e: Throwable) {
-                            // 连接异常:吞掉并在下面按 requestInterval 退避后重连
-                            println("WebSocket live-mode disconnected, will reconnect: ${e.message}")
                         }
-                        if (!this.isActive) break
-                        // socket 关闭或异常后,退避一个 requestInterval 再重连
-                        delay(requestInterval.seconds.inWholeMilliseconds)
+
+                        // WS 推送监听 + 自动重连:listenUnreadMessages 挂起到 socket 关闭后退避重连
+                        while (isActive) {
+                            try {
+                                mediationHandler.listenUnreadMessages(
+                                    liveModeEndpoint
+                                ) { arrayMessages ->
+                                    processMessages(arrayMessages)
+                                }
+                            } catch (e: CancellationException) {
+                                throw e // 协程被取消(stopConnection)时正常退出,不重连
+                            } catch (e: Throwable) {
+                                // 连接异常:吞掉并按 requestInterval 退避后重连
+                                println("WebSocket live-mode disconnected, will reconnect: ${e.message}")
+                            }
+                            if (!isActive) break
+                            delay(requestInterval.seconds.inWholeMilliseconds)
+                        }
                     }
                 } else {
                     // Fallback mechanism if no WebSocket service endpoint is available
@@ -232,9 +260,25 @@ class ConnectionManagerImpl(
 
     internal fun processMessages(arrayMessages: Array<Pair<String, Message>>) {
         scope.launch {
+            // 去重:过滤掉最近已处理过的消息(WS 推送 + 安全网 pickup 并行可能重复投递)
+            val fresh = processedIdsMutex.withLock {
+                arrayMessages.filter { pair ->
+                    if (processedMessageIds.contains(pair.first)) {
+                        false
+                    } else {
+                        processedMessageIds.addLast(pair.first)
+                        if (processedMessageIds.size > MAX_TRACKED_PROCESSED_IDS) {
+                            processedMessageIds.removeFirst()
+                        }
+                        true
+                    }
+                }
+            }
+            if (fresh.isEmpty()) return@launch
+
             val messagesIds = mutableListOf<String>()
             val messages = mutableListOf<Message>()
-            arrayMessages.forEach { pair ->
+            fresh.forEach { pair ->
                 messagesIds.add(pair.first)
                 messages.add(pair.second)
             }
@@ -302,5 +346,6 @@ class ConnectionManagerImpl(
 
     companion object {
         const val NUMBER_OF_MESSAGES = 10
+        const val MAX_TRACKED_PROCESSED_IDS = 256
     }
 }
