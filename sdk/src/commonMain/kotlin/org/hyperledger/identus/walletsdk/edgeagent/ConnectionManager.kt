@@ -28,6 +28,9 @@ import org.hyperledger.identus.walletsdk.edgeagent.mediation.MediationHandler
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.ProtocolType
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.issueCredential.IssueCredential
 import org.hyperledger.identus.walletsdk.edgeagent.protocols.revocation.RevocationNotification
+import org.hyperledger.identus.walletsdk.logger.LogComponent
+import org.hyperledger.identus.walletsdk.logger.Logger
+import org.hyperledger.identus.walletsdk.logger.LoggerImpl
 import kotlin.time.Duration.Companion.seconds
 
 interface ConnectionManager : ConnectionsManager, DIDCommConnection {
@@ -74,6 +77,8 @@ class ConnectionManagerImpl(
 
     var fetchingMessagesJob: Job? = null
 
+    private val logger: Logger = LoggerImpl(LogComponent.EDGE_AGENT)
+
     // live-mode 下 WS 推送与安全网 pickup 并行,可能在 ack 删库前重复投递同一条;
     // 按消息 id 做有界去重,避免重复处理。
     private val processedMessageIds = ArrayDeque<String>()
@@ -111,37 +116,50 @@ class ConnectionManagerImpl(
                     // mediator 只在收件方有已注册 live 连接的瞬间才推送,否则消息只存库不投递;
                     // 而 listenUnreadMessages 不轮询,重连退避空档/静默断开/注册竞态期间到达的消息会永久丢失。
                     // 安全网持续按 requestInterval 做 pickup,把任何未被推送的存库消息补回来。
+                    logger.debug("[VP-LiveMode] start: WS push + safety-net poll, endpoint=$liveModeEndpoint, interval=${requestInterval}s")
                     coroutineScope {
                         // 子协程:安全网补拉,独立于 WS 重连,随整个 job 取消而退出
                         launch {
+                            var pollCycle = 0
                             while (isActive) {
                                 try {
                                     awaitMessages().collect { array ->
-                                        processMessages(array)
+                                        if (array.isNotEmpty()) {
+                                            logger.debug("[VP-LiveMode] safety-net poll #$pollCycle pulled ${array.size} message(s)")
+                                        }
+                                        processMessages(array, "poll")
                                     }
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (e: Throwable) {
                                     // 单次补拉失败,下个周期重试
+                                    logger.debug("[VP-LiveMode] safety-net poll #$pollCycle failed: ${e.message}")
                                 }
+                                pollCycle++
                                 delay(requestInterval.seconds.inWholeMilliseconds)
                             }
                         }
 
                         // WS 推送监听 + 自动重连:listenUnreadMessages 挂起到 socket 关闭后退避重连
+                        var wsAttempt = 0
                         while (isActive) {
                             try {
+                                logger.debug("[VP-LiveMode] WS connecting (attempt #$wsAttempt)")
                                 mediationHandler.listenUnreadMessages(
                                     liveModeEndpoint
                                 ) { arrayMessages ->
-                                    processMessages(arrayMessages)
+                                    logger.debug("[VP-LiveMode] WS push received ${arrayMessages.size} message(s)")
+                                    processMessages(arrayMessages, "push")
                                 }
+                                logger.debug("[VP-LiveMode] WS session closed (attempt #$wsAttempt), will reconnect")
                             } catch (e: CancellationException) {
                                 throw e // 协程被取消(stopConnection)时正常退出,不重连
                             } catch (e: Throwable) {
                                 // 连接异常:吞掉并按 requestInterval 退避后重连
+                                logger.warning("[VP-LiveMode] WS disconnected (attempt #$wsAttempt), will reconnect: ${e.message}")
                                 println("WebSocket live-mode disconnected, will reconnect: ${e.message}")
                             }
+                            wsAttempt++
                             if (!isActive) break
                             delay(requestInterval.seconds.inWholeMilliseconds)
                         }
@@ -258,7 +276,7 @@ class ConnectionManagerImpl(
         return null
     }
 
-    internal fun processMessages(arrayMessages: Array<Pair<String, Message>>) {
+    internal fun processMessages(arrayMessages: Array<Pair<String, Message>>, source: String = "poll") {
         scope.launch {
             // 去重:过滤掉最近已处理过的消息(WS 推送 + 安全网 pickup 并行可能重复投递)
             val fresh = processedIdsMutex.withLock {
@@ -273,6 +291,13 @@ class ConnectionManagerImpl(
                         true
                     }
                 }
+            }
+            if (arrayMessages.isNotEmpty()) {
+                val dup = arrayMessages.size - fresh.size
+                logger.debug(
+                    "[VP-LiveMode] processMessages(source=$source): received=${arrayMessages.size}, fresh=${fresh.size}, duplicatesSkipped=$dup" +
+                        if (fresh.isNotEmpty()) ", piuris=${fresh.map { it.second.piuri }}" else ""
+                )
             }
             if (fresh.isEmpty()) return@launch
 
@@ -330,6 +355,7 @@ class ConnectionManagerImpl(
                     messagesIds.toTypedArray()
                 )
                 pluto.storeMessages(messages)
+                logger.debug("[VP-LiveMode] stored ${messages.size} message(s) to Pluto + acked (source=$source)")
             }
         }
     }
