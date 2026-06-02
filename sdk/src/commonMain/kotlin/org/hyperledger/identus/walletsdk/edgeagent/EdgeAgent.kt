@@ -1170,7 +1170,7 @@ open class EdgeAgent {
         domain: String? = null,
         challenge: String? = null,
         senderDID: DID? = null
-    ) {
+    ): String {
         val newPeerDID: DID
         if (senderDID != null) {
             logger.debug("[VP-Perf] initiate.reuse prepared senderDID (skip createNewPeerDID)")
@@ -1237,10 +1237,11 @@ open class EdgeAgent {
 
         logger.debug("[VP-Perf] initiate.createPresentationDefinitionRequest ${perfMark.elapsedNow().inWholeMilliseconds}ms")
 
+        val requestThid = UUID.randomUUID().toString()
         val presentationRequest = RequestPresentation(
             body = RequestPresentation.Body(proofTypes = emptyArray()),
             attachments = arrayOf(attachmentDescriptor),
-            thid = UUID.randomUUID().toString(),
+            thid = requestThid,
             from = newPeerDID,
             to = toDID,
             direction = Message.Direction.SENT
@@ -1248,6 +1249,8 @@ open class EdgeAgent {
         perfMark = TimeSource.Monotonic.markNow()
         connectionManager.sendMessage(presentationRequest.makeMessage())
         logger.debug("[VP-Perf] initiate.connectionManager.sendMessage ${perfMark.elapsedNow().inWholeMilliseconds}ms")
+        // 返回本次请求的 thid,供上层按会话过滤对端 VP(VP 响应的 thid 与之相同)
+        return requestThid
     }
 
     private suspend fun handlePresentationDefinitionRequest(

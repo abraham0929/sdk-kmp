@@ -108,16 +108,8 @@ constructor(
      */
     @Throws(CastorError.NotPossibleToResolveDID::class)
     override suspend fun resolveDID(did: String): DIDDocument {
-        logger.debug(
-            message = "Trying to resolve DID",
-            metadata = arrayOf(
-                Metadata.MaskedMetadataByLevel(
-                    key = "DID",
-                    value = did,
-                    level = LogLevel.DEBUG
-                )
-            )
-        )
+        // 注:此处原有 "Trying to resolve DID" 的 per-resolve debug 日志已移除——
+        // 消息收发/pickup 会高频解析 DID,该日志会刷屏。需要排查时可临时恢复。
         val resolvers = CastorShared.getDIDResolver(did, resolvers)
         resolvers.forEach { resolver ->
             try {
