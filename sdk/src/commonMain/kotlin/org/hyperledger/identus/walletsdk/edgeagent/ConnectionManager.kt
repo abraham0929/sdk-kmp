@@ -115,8 +115,13 @@ class ConnectionManagerImpl(
                     // live-mode = WS 推送(低延迟)+ 并行的低频"安全网补拉"(可靠性兜底)。
                     // mediator 只在收件方有已注册 live 连接的瞬间才推送,否则消息只存库不投递;
                     // 而 listenUnreadMessages 不轮询,重连退避空档/静默断开/注册竞态期间到达的消息会永久丢失。
-                    // 安全网持续按 requestInterval 做 pickup,把任何未被推送的存库消息补回来。
-                    logger.debug("[VP-LiveMode] start: WS push + safety-net poll, endpoint=$liveModeEndpoint, interval=${requestInterval}s")
+                    // 安全网定期 pickup,把任何未被推送的存库消息补回来。
+                    // 注意:安全网间隔必须显著大于 WS 重连退避(requestInterval),否则会变成高频主轮询——
+                    // 每次 pickup 都要 packMessage(加密)+ 解析 peer DID,频繁运行会持续吃 CPU/内存(GC 抖动)。
+                    // 这里取 max(requestInterval, SAFETY_NET_MIN_INTERVAL_SECONDS) 作为真正的低频兜底。
+                    val safetyNetIntervalMs =
+                        maxOf(requestInterval, SAFETY_NET_MIN_INTERVAL_SECONDS).seconds.inWholeMilliseconds
+                    logger.debug("[VP-LiveMode] start: WS push + safety-net poll, endpoint=$liveModeEndpoint, safetyNetInterval=${safetyNetIntervalMs}ms, wsBackoff=${requestInterval}s")
                     coroutineScope {
                         // 子协程:安全网补拉,独立于 WS 重连,随整个 job 取消而退出
                         launch {
@@ -136,7 +141,7 @@ class ConnectionManagerImpl(
                                     logger.debug("[VP-LiveMode] safety-net poll #$pollCycle failed: ${e.message}")
                                 }
                                 pollCycle++
-                                delay(requestInterval.seconds.inWholeMilliseconds)
+                                delay(safetyNetIntervalMs)
                             }
                         }
 
@@ -373,5 +378,8 @@ class ConnectionManagerImpl(
     companion object {
         const val NUMBER_OF_MESSAGES = 10
         const val MAX_TRACKED_PROCESSED_IDS = 256
+
+        /** 安全网补拉的最小间隔(秒)。WS 推送是快路径,补拉只是兜底,无需高频。 */
+        const val SAFETY_NET_MIN_INTERVAL_SECONDS = 15
     }
 }
