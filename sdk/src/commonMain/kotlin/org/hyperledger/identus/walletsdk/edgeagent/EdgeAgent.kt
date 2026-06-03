@@ -114,7 +114,6 @@ import org.hyperledger.identus.walletsdk.logger.LogComponent
 import org.hyperledger.identus.walletsdk.logger.Logger
 import org.hyperledger.identus.walletsdk.logger.LoggerImpl
 import org.hyperledger.identus.walletsdk.logger.Metadata
-import kotlin.time.TimeSource
 import org.hyperledger.identus.walletsdk.pluto.PlutoBackupTask
 import org.hyperledger.identus.walletsdk.pluto.PlutoRestoreTask
 import org.hyperledger.identus.walletsdk.pluto.models.backup.BackupV0_0_1
@@ -534,9 +533,7 @@ open class EdgeAgent {
         updateMediator: Boolean
     ) {
         if (updateMediator) {
-            val updateMark = TimeSource.Monotonic.markNow()
             updateMediatorWithDID(did)
-            logger.debug("[VP-Perf] registerPeerDID.updateMediatorWithDID ${updateMark.elapsedNow().inWholeMilliseconds}ms")
         }
         // The next logic is a bit tricky, so it's not forgotten this is a reminder.
         // The next few lines are needed because of DIDComm library, the library will need
@@ -1173,18 +1170,12 @@ open class EdgeAgent {
     ): String {
         val newPeerDID: DID
         if (senderDID != null) {
-            logger.debug("[VP-Perf] initiate.reuse prepared senderDID (skip createNewPeerDID)")
             newPeerDID = senderDID
         } else {
-            var prepMark = TimeSource.Monotonic.markNow()
             val didDocument = this.castor.resolveDID(toDID.toString())
-            logger.debug("[VP-Perf] initiate.resolveDID(toDID) ${prepMark.elapsedNow().inWholeMilliseconds}ms")
-            prepMark = TimeSource.Monotonic.markNow()
             newPeerDID = createNewPeerDID(services = didDocument.services, updateMediator = true)
-            logger.debug("[VP-Perf] initiate.createNewPeerDID(+updateMediator) ${prepMark.elapsedNow().inWholeMilliseconds}ms")
         }
 
-        var perfMark = TimeSource.Monotonic.markNow()
         val presentationDefinitionRequest: String
         val attachmentDescriptor: AttachmentDescriptor
         when (type) {
@@ -1235,8 +1226,6 @@ open class EdgeAgent {
             }
         }
 
-        logger.debug("[VP-Perf] initiate.createPresentationDefinitionRequest ${perfMark.elapsedNow().inWholeMilliseconds}ms")
-
         val requestThid = UUID.randomUUID().toString()
         val presentationRequest = RequestPresentation(
             body = RequestPresentation.Body(proofTypes = emptyArray()),
@@ -1246,9 +1235,7 @@ open class EdgeAgent {
             to = toDID,
             direction = Message.Direction.SENT
         )
-        perfMark = TimeSource.Monotonic.markNow()
         connectionManager.sendMessage(presentationRequest.makeMessage())
-        logger.debug("[VP-Perf] initiate.connectionManager.sendMessage ${perfMark.elapsedNow().inWholeMilliseconds}ms")
         // 返回本次请求的 thid,供上层按会话过滤对端 VP(VP 响应的 thid 与之相同)
         return requestThid
     }
@@ -1275,13 +1262,11 @@ open class EdgeAgent {
                 val privateKey =
                     apollo.restorePrivateKey(storablePrivateKey.restorationIdentifier, storablePrivateKey.data)
 
-                val signMark = TimeSource.Monotonic.markNow()
                 val presentationSubmissionProof = pollux.createJWTPresentationSubmission(
                     presentationDefinitionRequest = presentationDefinitionRequestString,
                     credential = credential,
                     privateKey = privateKey,
                 )
-                logger.debug("[VP-Perf] createJWTPresentationSubmission(sign) ${signMark.elapsedNow().inWholeMilliseconds}ms")
 
                 val attachmentDescriptor = AttachmentDescriptor(
                     mediaType = "application/json",
